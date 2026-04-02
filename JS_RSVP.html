@@ -1,0 +1,752 @@
+<script>
+// ── 1. 報名首頁：渲染活動列表 ─────────────────────────────────────
+
+function renderActivityListRsvp() {
+  var el = document.getElementById('activity-list-rsvp');
+  if (!S.activities.length) {
+    el.innerHTML = '<div class="empty">目前沒有活動</div>';
+    return;
+  }
+  el.innerHTML = S.activities.map(function(a) {
+    var closed = !a.isOpen;
+    return '<div class="act-card' + (closed ? ' closed' : '') + '" onclick="' + (closed ? '' : 'openRsvpSelect(\'' + a.id + '\')') + '">' +
+      '<div>' +
+        '<div class="act-name">' + esc(a.name) + '</div>' +
+        '<div class="act-meta">' +
+          (a.startDate ? '<span>開始 ' + a.startDate + '</span>' : '') +
+          (a.endDate   ? '<span>結束 ' + a.endDate   + '</span>' : '') +
+          (a.deadline  ? '<span>截止報名 ' + a.deadline + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
+        '<span class="badge ' + (a.isOpen ? 'badge-open' : 'badge-closed') + '">' + a.status + '</span>' +
+        (closed ? '<span style="font-size:24px;color:var(--ink-soft)">已截止報名</span>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── 2. 報名彈窗控制：選擇模式 (家庭/小隊) ──────────────────────────
+
+function openRsvpSelect(actId) {
+  var act = findById(S.activities, actId);
+  if (!act) return;
+  S.rsvp.activityId   = actId;
+  S.rsvp.activityName = act.name;
+
+  document.getElementById('rsvp-act-title').textContent = '報名：' + act.name;
+
+  var famSel = document.getElementById('sel-family');
+  famSel.innerHTML = '<option value="">- 選擇家庭 -</option>';
+  S.families.forEach(function(f){ famSel.innerHTML += '<option value="' + f.id + '">' + f.name + '</option>'; });
+
+  var sqSel = document.getElementById('sel-squad');
+  sqSel.innerHTML = '<option value="">- 選擇小隊 -</option>';
+  S.options.squads.forEach(function(s){ sqSel.innerHTML += '<option value="' + s + '">' + s + '</option>'; });
+
+  openModal('modal-rsvp-select');
+}
+
+function goRsvpByFamily() {
+  var fid = document.getElementById('sel-family').value;
+  if (!fid) { toast('請選擇家庭', 'warn'); return; }
+  S.rsvp.mode     = 'family';
+  S.rsvp.familyId = fid;
+  var fam = findById(S.families, fid);
+  S.rsvp.familyName = fam ? fam.name : '';
+  closeModal('modal-rsvp-select');
+  openRsvpFill();
+}
+
+function goRsvpBySquad() {
+  var sq = document.getElementById('sel-squad').value;
+  if (!sq) { toast('請選擇小隊', 'warn'); return; }
+  S.rsvp.mode      = 'squad';
+  S.rsvp.squadName = sq;
+  closeModal('modal-rsvp-select');
+  openRsvpFillSquad();
+}
+
+// ── 3. 報名流程：渲染填寫表單 ─────────────────────────────────────
+
+function openRsvpFill() {
+  S.isSubmitting = false;
+  var btn = document.querySelector('#rsvp-submit-row .btn-primary');
+  if (btn) { btn.disabled = false; btn.textContent = '送出報名'; }
+  document.getElementById('rsvp-fill-title').textContent = '填寫出席 - ' + S.rsvp.familyName;
+  document.getElementById('rsvp-squad-family-picker').style.display = 'none';
+  document.getElementById('rsvp-member-area').innerHTML = '<div class="loading"></div>';
+  document.getElementById('rsvp-global-note-area').style.display = 'none';
+  document.getElementById('rsvp-submit-row').style.display = 'none';
+  openModal('modal-rsvp-fill');
+  loadFamilyMembers(S.rsvp.familyId);
+}
+
+function openRsvpFillSquad() {
+  document.getElementById('rsvp-fill-title').textContent = '以小隊報名 - ' + S.rsvp.squadName;
+  document.getElementById('rsvp-squad-family-picker').style.display = 'block';
+  document.getElementById('rsvp-member-area').innerHTML = '<div class="empty">請先選擇家庭</div>';
+  document.getElementById('rsvp-global-note-area').style.display = 'none';
+  document.getElementById('rsvp-submit-row').style.display = 'none';
+
+  var squadMembers = S.members.filter(function(m){ return m.squad === S.rsvp.squadName; });
+  var familyIds = [];
+  var seen = {};
+  squadMembers.forEach(function(m){
+    if (!seen[m.familyId]) { seen[m.familyId] = true; familyIds.push(m.familyId); }
+  });
+
+  var sel = document.getElementById('squad-family-sel');
+  sel.innerHTML = '<option value="">- 選擇家庭 -</option>';
+  familyIds.forEach(function(fid) {
+    var fam = findById(S.families, fid);
+    var famName;
+    if (fam) {
+      famName = fam.name;
+    } else {
+      var anyMember = S.members.filter(function(m){ return String(m.familyId) === String(fid); })[0];
+      famName = anyMember ? (anyMember.familyName || fid) : fid;
+    }
+    sel.innerHTML += '<option value="' + fid + '">' + famName + '</option>';
+  });
+
+  openModal('modal-rsvp-fill');
+}
+
+function loadFamilyInSquad() {
+  var fid = document.getElementById('squad-family-sel').value;
+  if (!fid) { document.getElementById('rsvp-member-area').innerHTML = '<div class="empty">請先選擇家庭</div>'; return; }
+  S.rsvp.familyId = fid;
+  var fam = findById(S.families, fid);
+  S.rsvp.familyName = fam ? fam.name : '';
+  loadFamilyMembers(fid);
+}
+
+function loadFamilyMembers(familyId) {
+  document.getElementById('rsvp-member-area').innerHTML = '<div class="loading"></div>';
+  Promise.all([
+    gas('getMembersByFamily', familyId),
+    gas('getRsvpByActivity', S.rsvp.activityId)
+  ]).then(function(results) {
+    var members  = results[0] || [];
+    var rsvpList = results[1] || [];
+
+    S.rsvp.memberStatuses = {};
+    var existingNote = '';
+    var existingByMemberId = {};
+    rsvpList.forEach(function(r){
+      if (String(r.familyId) === String(familyId)) {
+        existingByMemberId[String(r.memberId)] = { status: r.status, note: r.note };
+        if (r.memberName === '整體備註') existingNote = r.note;
+      }
+    });
+
+    members.forEach(function(m){
+      var ex = existingByMemberId[String(m.id)];
+      S.rsvp.memberStatuses[m.id] = ex || { status: '待確認', note: '' };
+    });
+
+    renderMemberRsvpList(members);
+
+    var gnEl = document.getElementById('rsvp-global-note');
+    if (gnEl) gnEl.value = existingNote;
+    document.getElementById('rsvp-global-note-area').style.display = 'block';
+    document.getElementById('rsvp-submit-row').style.display = 'flex';
+  }).catch(function(e){ toast('載入失敗：' + e.message, 'error'); });
+}
+
+function renderMemberRsvpList(members) {
+  var el = document.getElementById('rsvp-member-area');
+  if (!members.length) { el.innerHTML = '<div class="empty">此家庭無成員資料</div>'; return; }
+
+  el.innerHTML = '<div class="member-grid">' + members.map(function(m) {
+    var s = S.rsvp.memberStatuses[m.id] || { status: '待確認', note: '' };
+    var hasNote = s.note && s.note.trim();
+    return '<div class="member-row" id="mrow-' + m.id + '">' +
+      '<div class="member-info">' +
+        '<div class="mname">' + esc(m.naturalName) + '</div>' +
+        '<div class="mmeta">' +
+          (m.role ? '<span class="tag">' + m.role + '</span>' : '') +
+          (m.troop ? '<span class="tag">' + m.troop + '</span>' : '') +
+          (m.grade ? '<span class="tag">' + m.grade + '</span>' : '') +
+        '</div>' +
+        '<button class="note-toggle" onclick="toggleMemberNote(\'' + m.id + '\')">' + (hasNote ? '- 個人備註' : '+ 個人備註') + '</button>' +
+      '</div>' +
+      '<div class="status-group">' +
+        '<button class="sts-btn attend' + (s.status === '出席' ? ' on' : '') + '" onclick="setMemberStatus(\'' + m.id + '\',\'出席\')">出席</button>' +
+        '<button class="sts-btn absent' + (s.status === '不出席' ? ' on' : '') + '" onclick="setMemberStatus(\'' + m.id + '\',\'不出席\')">不出席</button>' +
+        '<button class="sts-btn pending' + (s.status === '待確認' ? ' on' : '') + '" onclick="setMemberStatus(\'' + m.id + '\',\'待確認\')">待確認</button>' +
+      '</div>' +
+      '<div class="note-row' + (hasNote ? ' show' : '') + '" id="note-row-' + m.id + '" style="grid-column:1/-1">' +
+        '<input type="text" placeholder="個人備註（請假原因等）" value="' + esc(s.note || '') + '" oninput="setMemberNote(\'' + m.id + '\',this.value)" style="margin-top:6px">' +
+      '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+function setMemberStatus(mid, status) {
+  if (!S.rsvp.memberStatuses[mid]) S.rsvp.memberStatuses[mid] = { status: '待確認', note: '' };
+  S.rsvp.memberStatuses[mid].status = status;
+  var row = document.getElementById('mrow-' + mid);
+  if (!row) return;
+  row.querySelectorAll('.sts-btn').forEach(function(b){ b.classList.remove('on'); });
+  var cls = status === '出席' ? 'attend' : status === '不出席' ? 'absent' : 'pending';
+  var target = row.querySelector('.sts-btn.' + cls);
+  if (target) target.classList.add('on');
+}
+
+function setMemberNote(mid, val) {
+  if (!S.rsvp.memberStatuses[mid]) S.rsvp.memberStatuses[mid] = { status: '待確認', note: '' };
+  S.rsvp.memberStatuses[mid].note = val;
+}
+
+function toggleMemberNote(mid) {
+  var row = document.getElementById('note-row-' + mid);
+  if (!row) return;
+  row.classList.toggle('show');
+  var btn = row.previousElementSibling ? row.previousElementSibling.querySelector('.note-toggle') : null;
+  if (!btn) {
+    var mrow = document.getElementById('mrow-' + mid);
+    if (mrow) btn = mrow.querySelector('.note-toggle');
+  }
+  if (btn) btn.textContent = row.classList.contains('show') ? '- 個人備註' : '+ 個人備註';
+}
+
+function submitRsvp() {
+  if (S.isSubmitting) return;
+  S.isSubmitting = true;
+  var btn = document.querySelector('#rsvp-submit-row .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = '送出中...'; }
+
+  var fid = S.rsvp.familyId;
+  var aid = S.rsvp.activityId;
+  if (!fid || !aid) {
+    S.isSubmitting = false;
+    if (btn) { btn.disabled = false; btn.textContent = '送出報名'; }
+    toast('請先選擇家庭與活動', 'error'); return;
+  }
+
+  var members = [];
+  var ids = Object.keys(S.rsvp.memberStatuses);
+  ids.forEach(function(mid) {
+    var m = findById(S.members, mid);
+    if (!m) return;
+    var v = S.rsvp.memberStatuses[mid];
+    members.push({ id: mid, name: m.name, status: v.status, note: v.note || '' });
+  });
+
+  var globalNote = document.getElementById('rsvp-global-note').value.trim();
+  if (globalNote) {
+    members.push({ id: 'GLOBAL_' + fid, name: '整體備註', status: '-', note: globalNote });
+  }
+
+  if (!members.length) { toast('沒有成員資料', 'error'); return; }
+
+  gas('submitRsvp', {
+    activityId:   aid,
+    activityName: S.rsvp.activityName,
+    familyId:     fid,
+    familyName:   S.rsvp.familyName,
+    members:      members
+  }).then(function() {
+    S.isSubmitting = false;
+    toast('報名成功！', 'success');
+    closeModal('modal-rsvp-fill');
+  }).catch(function(e){
+    S.isSubmitting = false;
+    if (btn) { btn.disabled = false; btn.textContent = '送出報名'; }
+    toast('送出失敗：' + e.message, 'error'); 
+  });
+}
+
+// ── 4. 前端：報名狀態檢視 (唯讀視圖) ──────────────────────────────────
+
+function populateViewActivitySelect() {
+  var sel = document.getElementById('view-act-sel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">- 請選擇活動 -</option>';
+  S.activities.forEach(function(a){ sel.innerHTML += '<option value="' + a.id + '">' + a.name + '</option>'; });
+}
+
+function setViewMode(mode) {
+  S.viewMode = mode;
+  document.querySelectorAll('#view-mode-ctrl .seg-btn').forEach(function(b,i){
+    b.classList.toggle('active', ['family','troop'][i] === mode);
+  });
+  loadViewRsvp();
+}
+
+function loadViewRsvp() {
+  var aid = document.getElementById('view-act-sel').value;
+  var el  = document.getElementById('view-content');
+  if (!aid) { el.innerHTML = '<div class="empty">請先選擇活動</div>'; return; }
+  el.innerHTML = '<div class="loading"></div>';
+
+  gas('getActivityStats', aid).then(function(stats) {
+    renderViewTable(el, stats);
+  }).catch(function(){ el.innerHTML = '<div class="empty">載入失敗</div>'; });
+}
+
+function renderViewTable(el, stats) {
+  var rows;
+  var groupKey = S.viewMode;
+
+  if (groupKey === 'family') {
+    rows = stats.byFamily;
+  } else if (groupKey === 'troop') {
+    rows = stats.byTroop;
+  } else {
+    rows = stats.bySquad;
+  }
+
+  var html = '<div class="stats-row">' +
+    '<div class="stat-box"><div class="stat-num">' + stats.total + '</div><div class="stat-lbl">已報名人數</div></div>' +
+    '<div class="stat-box stat-attend"><div class="stat-num">' + stats.attend + '</div><div class="stat-lbl">出席</div></div>' +
+    '<div class="stat-box stat-absent"><div class="stat-num">' + stats.absent + '</div><div class="stat-lbl">不出席</div></div>' +
+    '<div class="stat-box stat-pending"><div class="stat-num">' + stats.pending + '</div><div class="stat-lbl">待確認</div></div>' +
+  '</div>' +
+  '<div class="stats-row" style="margin-top:8px">' +
+    '<div class="stat-box" style="border-left:3px solid var(--forest-lt)"><div class="stat-num">' + (stats.familyRegRate||0) + '%</div><div class="stat-lbl">家庭報名率 (' + (stats.registeredFamilyCount||0) + '/' + (stats.totalFamilies||0) + ')</div></div>' +
+    '<div class="stat-box" style="border-left:3px solid var(--sage)"><div class="stat-num">' + (stats.memberRegRate||0) + '%</div><div class="stat-lbl">成員報名率 (' + stats.total + '/' + (stats.totalMembers||0) + ')</div></div>' +
+    '<div class="stat-box" style="border-left:3px solid var(--amber)"><div class="stat-num">' + (stats.unregisteredFamilyCount||0) + '</div><div class="stat-lbl">尚未報名家庭</div></div>' +
+  '</div>';
+
+  if (groupKey === 'family') {
+    html += '<div class="tbl-wrap"><table>' +
+      '<colgroup>' +
+        '<col style="width:90px">' +
+        '<col style="width:80px">' +
+        '<col style="width:72px">' +
+        '<col style="width:140px">' +
+        '<col style="width:110px">' +
+      '</colgroup>' +
+      '<thead><tr>' +
+        '<th>姓名</th>' +
+        '<th>自然名</th>' +
+        '<th>出席狀態</th>' +
+        '<th>備註</th>' +
+        '<th>報名時間</th>' +
+      '</tr></thead>';
+
+    rows.forEach(function(r) {
+      var summary;
+      if (r.hasRsvp === false) {
+        summary = '<span style="color:var(--ink-soft)">尚未報名</span>';
+      } else {
+        summary =
+          '<span style="color:var(--forest-lt);font-weight:700">出席 ' + r.attend + '</span>　' +
+          '<span style="color:var(--red)">不出席 ' + r.absent + '</span>' +
+          (r.pending ? '　<span style="color:var(--amber)">待確認 ' + r.pending + '</span>' : '');
+      }
+
+      var rowBg = r.hasRsvp === false ? 'background:#faf0f0' : 'background:var(--mist)';
+      var borderColor = r.hasRsvp === false ? 'border-bottom:2px solid #ddd' : 'border-bottom:2px solid var(--forest-lt)';
+
+      html += '<tbody>' +
+        '<tr style="' + rowBg + '">' +
+          '<td colspan="5" style="padding:7px 12px;font-family:Georgia,serif;font-weight:700;font-size:26px;' + borderColor + '">' +
+            esc(r.name) +
+            (r.hasRsvp === false ? '<span style="margin-left:8px;font-size:22px;background:#fce8e6;color:var(--red);padding:2px 7px;border-radius:10px;font-weight:600">未報名</span>' : '') +
+            '<span style="float:right;font-size:24px;font-weight:400">' + summary + '</span>' +
+          '</td>' +
+        '</tr>';
+
+      if (r.globalNote) {
+        html += '<tr style="background:#fffde7">' +
+          '<td colspan="2" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
+          '<td></td>' +
+          '<td colspan="2" style="font-size:26px;color:#666">' + esc(r.globalNote) + '</td>' +
+        '</tr>';
+      }
+      (r.members || []).forEach(function(m) {
+        var badge, badgeStyle;
+        if (m.status === '未報名') {
+          badgeStyle = 'background:#f5f5f5;color:#999;display:inline-flex;align-items:center;padding:3px 9px;border-radius:12px;font-size:24px;font-weight:700';
+          html += '<tr style="opacity:.65">' +
+            '<td style="white-space:nowrap"><strong>' + esc(m.name) + '</strong></td>' +
+            '<td style="white-space:nowrap;color:var(--ink-soft)">' + esc(m.naturalName || '') + '</td>' +
+            '<td style="white-space:nowrap"><span style="' + badgeStyle + '">未報名</span></td>' +
+            '<td style="font-size:26px;color:var(--ink-soft)">—</td>' +
+            '<td style="font-size:24px;color:var(--ink-soft);white-space:nowrap">—</td>' +
+          '</tr>';
+        } else if (m.name === '整體備註') {
+          html += '<tr style="background:#fffde7">' +
+            '<td colspan="2" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
+            '<td></td>' +
+            '<td colspan="2" style="font-size:26px;color:var(--ink-soft)">' + esc(m.note || '') + '</td>' +
+          '</tr>';
+        } else {
+          badge = m.status==='出席' ? 'badge-attend' : m.status==='不出席' ? 'badge-absent' : 'badge-pending';
+          html += '<tr>' +
+            '<td style="white-space:nowrap"><strong>' + esc(m.name) + '</strong></td>' +
+            '<td style="white-space:nowrap;color:var(--ink-soft)">' + esc(m.naturalName || '') + '</td>' +
+            '<td style="white-space:nowrap"><span class="badge ' + badge + '">' + m.status + '</span></td>' +
+            '<td style="font-size:26px;color:var(--ink-soft)">' + esc(m.note || '') + '</td>' +
+            '<td style="font-size:24px;color:var(--ink-soft);white-space:nowrap">' + esc(m.rsvpTime || '') + '</td>' +
+          '</tr>';
+        }
+      });
+      html += '</tbody>';
+    });
+    html += '</table></div>';
+
+  } else if (groupKey === 'troop') {
+    // 省略：這是原本很長的團別渲染邏輯，保持原封不動
+    var TROOP_ORDER   = ['蟻','蜂','鹿','鷹','育','複式'];
+    var TROOP_DISPLAY = { '蟻':'🐜 小蟻團','蜂':'🐝 炫蜂團','鹿':'🦌 奔鹿團','鷹':'🦅 翔鷹團','育':'🦉 育成會','複式':'🌿 複式團' };
+    var SQUAD_DISPLAY = {};
+    var SQUAD_EMOJI = {
+      '小黑蟻':'♟️ 小黑蟻','小黃蟻':'🌼 小黃蟻','小綠蟻':'🌿 小綠蟻','小紅蟻':'🌺 小紅蟻',
+      '泥壺蜂':'🏺 泥壺蜂','虎頭蜂':'🐯 虎頭蜂','長腳蜂':'🦵 長腳蜂','細腰蜂':'⌛ 細腰蜂',
+      '草原鹿':'🌾 草原鹿','森林鹿':'🌲 森林鹿','高地鹿':'⛰️ 高地鹿','湖泊鹿':'🏞️ 湖泊鹿',
+      '花叢小隊':'🌸 花叢小隊','天空小隊':'☁️ 天空小隊','草原小隊':'🌻 草原小隊','大地小隊':'🌍 大地小隊'
+    };
+    var troopSquads = { '蟻':['小黑蟻','小黃蟻','小綠蟻','小紅蟻'], '蜂':['泥壺蜂','虎頭蜂','長腳蜂','細腰蜂'], '鹿':['草原鹿','森林鹿','高地鹿','湖泊鹿'], '鷹':[], '育':['花叢小隊','天空小隊','草原小隊','大地小隊'] };
+    var squadPosOrder = {
+      '蟻': { squads: ['導引員','助理導引員','小蟻'], staff: ['團長','副團長','值星官','活動總召'] },
+      '蜂': { squads: ['季總召導引員','導引員','小蜂'], staff: ['團長','副團長','值星官'] },
+      '鹿': { squads: ['導引員','小鹿'], staff: ['團長','副團長'] },
+      '鷹': { squads: ['團長','副團長','小鷹'], staff: [] },
+      '育': { squads: ['導引員','隊員'], staff: ['會長','蟻育副會長','蜂育副會長','鹿育副會長','鷹育副會長'] }
+    };
+    var ikuSpecialSquads = ['鷹育','鹿育'];
+
+    function sortByPosition(members, posOrder) {
+      return members.slice().sort(function(a, b) {
+        var ai = posOrder.indexOf(a.position); var bi = posOrder.indexOf(b.position);
+        if (ai < 0) ai = posOrder.length; if (bi < 0) bi = posOrder.length;
+        return ai - bi;
+      });
+    }
+    var allByTroop = stats.allMembersByTroop || {};
+
+    function renderSquadBlock(title, members, titleColor, perRow) {
+      if (!members.length) return '';
+      var attend=0, absent=0, pending=0, unreg=0;
+      members.forEach(function(m){
+        if (m.status==='出席') attend++;
+        else if (m.status==='不出席') absent++;
+        else if (m.status==='待確認') pending++;
+        else unreg++;
+      });
+      var darkerColor = (titleColor||'var(--sage)').replace(/#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i, function(_,r,g,b){
+        return '#'+[r,g,b].map(function(x){return Math.max(0,parseInt(x,16)-20).toString(16).padStart(2,'0');}).join('');
+      });
+      var s = '<div style="border:1px solid #dde8e0;border-radius:6px;overflow:hidden;min-width:140px;flex:1 1 140px">' +
+        '<div style="background:' + (titleColor||'var(--sage)') + ';padding:5px 10px;font-size:24px;font-weight:700;color:#fff">' + esc(title) + '</div>' +
+        '<div style="background:' + darkerColor + ';padding:2px 6px;display:flex;gap:3px">' +
+          '<span style="background:#d4edda;color:#1a6b3a;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">O ' + attend  + '</span>' +
+          '<span style="background:#fce8e6;color:#b03020;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">X ' + absent  + '</span>' +
+          '<span style="background:#fff3cd;color:#856404;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">? ' + pending + '</span>' +
+          '<span style="background:rgba(0,0,0,.22);color:#fff;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">— ' + unreg   + '</span>' +
+        '</div><div style="padding:4px 0">';
+        
+      var leaderPositions = ['導引員','助理導引員','季總召導引員'];
+      if (perRow && perRow > 1) {
+        for (var ri = 0; ri < members.length; ri += perRow) {
+          var rowM = members.slice(ri, ri + perRow);
+          s += '<div style="display:flex">';
+          rowM.forEach(function(m) {
+            var bg, clr, label;
+            if (m.status==='出席')        { bg='#d4edda'; clr='#1a6b3a'; label='O'; }
+            else if (m.status==='不出席') { bg='#fce8e6'; clr='#b03020'; label='X'; }
+            else if (m.status==='待確認') { bg='#fff3cd'; clr='#856404'; label='?'; }
+            else                          { bg='#f0f0f0'; clr='#aaa';    label='—'; }
+            var isLeader = leaderPositions.indexOf(m.position) >= 0;
+            s += '<div style="flex:1;display:flex;align-items:center;gap:0;border-bottom:1px solid #f0f4f2;border-right:1px solid #f0f4f2' + (isLeader ? ';background:#f0f6f0' : '') + '">' +
+              '<span style="background:' + bg + ';color:' + clr + ';font-size:22px;font-weight:700;width:22px;text-align:center;padding:3px 0;flex-shrink:0">' + label + '</span>' +
+              '<span style="padding:3px 7px;font-size:26px' + (isLeader ? ';font-weight:700;color:var(--forest-md)' : '') + '">' + esc(m.naturalName || m.name) + '</span>' +
+            '</div>';
+          });
+          for (var pad = rowM.length; pad < perRow; pad++) {
+            s += '<div style="flex:1;border-bottom:1px solid #f0f4f2"></div>';
+          }
+          s += '</div>';
+        }
+      } else {
+        members.forEach(function(m) {
+          var bg, clr, label;
+          if (m.status==='出席')        { bg='#d4edda'; clr='#1a6b3a'; label='O'; }
+          else if (m.status==='不出席') { bg='#fce8e6'; clr='#b03020'; label='X'; }
+          else if (m.status==='待確認') { bg='#fff3cd'; clr='#856404'; label='?'; }
+          else                          { bg='#f0f0f0'; clr='#aaa';    label='—'; }
+          var isLeader = leaderPositions.indexOf(m.position) >= 0;
+          s += '<div style="display:flex;align-items:center;gap:0;border-bottom:1px solid #f0f4f2' + (isLeader ? ';background:#f0f6f0' : '') + '">' +
+            '<span style="background:' + bg + ';color:' + clr + ';font-size:22px;font-weight:700;width:22px;text-align:center;padding:3px 0;flex-shrink:0">' + label + '</span>' +
+            '<span style="padding:3px 7px;font-size:26px' + (isLeader ? ';font-weight:700;color:var(--forest-md)' : '') + '">' + esc(m.naturalName || m.name) + '</span>' +
+          '</div>';
+        });
+      }
+      s += '</div></div>';
+      return s;
+    }
+
+    var orderedRows = [];
+    TROOP_ORDER.forEach(function(tk) {
+      var found = rows.filter(function(r){ return r.name === tk; })[0];
+      if (found) { orderedRows.push(found); }
+      else if (allByTroop[tk] && allByTroop[tk].length) { orderedRows.push({ name: tk, attend:0, absent:0, pending:0, members:[] }); }
+    });
+    rows.forEach(function(r){ if (TROOP_ORDER.indexOf(r.name) < 0) orderedRows.push(r); });
+
+    orderedRows.forEach(function(r) {
+      var squadsOfTroop = troopSquads[r.name] || [];
+      var rsvpMembers = r.members || [];
+      var allMembers = allByTroop[r.name] || [];
+      var dispName = TROOP_DISPLAY[r.name] || (r.name + '團');
+
+      var rsvpMap = {};
+      rsvpMembers.forEach(function(m){ rsvpMap[m.name] = m; });
+      var merged = allMembers.map(function(m) {
+        return rsvpMap[m.name] || { name: m.name, naturalName: m.naturalName, squad: m.squad, position: m.position || '', status: '未報名', note: '' };
+      });
+
+      var attendTotal=0, absentTotal=0, pendingTotal=0, unregTotal=0;
+      merged.forEach(function(m){
+        if (m.status==='出席') attendTotal++;
+        else if (m.status==='不出席') absentTotal++;
+        else if (m.status==='待確認') pendingTotal++;
+        else unregTotal++;
+      });
+
+      html += '<div style="margin-bottom:20px">' +
+        '<div style="background:var(--forest-lt);color:#fff;padding:7px 14px;border-radius:8px 8px 0 0;font-weight:700;font-size:27px;display:flex;align-items:center;gap:10px">' +
+          esc(dispName) +
+          '<span style="font-size:26px;font-weight:400;margin-left:auto;display:flex;gap:10px">' +
+            '<span style="color:#b2f0c8">出席(O) ' + attendTotal + '</span>' +
+            '<span style="color:#ffb3b3">不出席(X) ' + absentTotal + '</span>' +
+            '<span style="color:#ffe082">待確認(?) ' + pendingTotal + '</span>' +
+            '<span style="color:rgba(255,255,255,.5)">未報名(—) ' + unregTotal + '</span>' +
+          '</span>' +
+        '</div>' +
+        '<div style="border:1px solid #dde8e0;border-top:none;border-radius:0 0 8px 8px;padding:10px;display:flex;flex-wrap:wrap;gap:8px;width:100%;box-sizing:border-box;overflow:hidden">';
+
+      var posRule = squadPosOrder[r.name] || { squads: [], staff: [] };
+      var sqColors = ['#6aab8e','#5a9a7e','#4a896e','#3a785e'];
+
+      function renderStaffRow(staffMembers, perRow) {
+        perRow = perRow || 4;
+        if (!staffMembers.length) return '';
+        var attend=0, absent=0, pending=0, unreg=0;
+        staffMembers.forEach(function(m){
+          if (m.status==='出席') attend++;
+          else if (m.status==='不出席') absent++;
+          else if (m.status==='待確認') pending++;
+          else unreg++;
+        });
+        var s = '<div style="width:100%;margin-bottom:8px;border:1px solid #dde8e0;border-radius:6px;overflow:hidden">' +
+          '<div style="background:#8a9a8e;padding:5px 10px;font-size:24px;font-weight:700;color:#fff">🎖️ 幹部</div>' +
+          '<div style="background:#6a7a6e;padding:2px 6px;display:flex;gap:3px">' +
+            '<span style="background:#d4edda;color:#1a6b3a;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">O ' + attend  + '</span>' +
+            '<span style="background:#fce8e6;color:#b03020;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">X ' + absent  + '</span>' +
+            '<span style="background:#fff3cd;color:#856404;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">? ' + pending + '</span>' +
+            '<span style="background:rgba(0,0,0,.22);color:#fff;font-size:15px;font-weight:700;padding:1px 4px;border-radius:3px">— ' + unreg   + '</span>' +
+          '</div><div style="padding:4px 0">';
+        for (var ri = 0; ri < staffMembers.length; ri += perRow) {
+          var rowM = staffMembers.slice(ri, ri + perRow);
+          s += '<div style="display:flex">';
+          rowM.forEach(function(m) {
+            var bg, clr, label;
+            if (m.status==='出席')        { bg='#d4edda'; clr='#1a6b3a'; label='O'; }
+            else if (m.status==='不出席') { bg='#fce8e6'; clr='#b03020'; label='X'; }
+            else if (m.status==='待確認') { bg='#fff3cd'; clr='#856404'; label='?'; }
+            else                          { bg='#f0f0f0'; clr='#aaa';    label='—'; }
+            s += '<div style="flex:1;display:flex;align-items:center;gap:0;border-bottom:1px solid #f0f4f2;border-right:1px solid #f0f4f2;background:#f0f6f0">' +
+              '<span style="background:' + bg + ';color:' + clr + ';font-size:22px;font-weight:700;width:22px;text-align:center;padding:3px 0;flex-shrink:0">' + label + '</span>' +
+              '<span style="padding:3px 7px;font-size:26px;font-weight:700;color:var(--forest-md)">' + esc(m.naturalName || m.name) + '</span>' +
+            '</div>';
+          });
+          for (var pad = rowM.length; pad < perRow; pad++) {
+            s += '<div style="flex:1;border-bottom:1px solid #f0f4f2;background:#f0f6f0"></div>';
+          }
+          s += '</div>';
+        }
+        s += '</div></div>';
+        return s;
+      }
+
+      if (r.name === '鷹') {
+        var eagleKids  = merged.filter(function(m){ return m.position === '小鷹'; });
+        var eagleStaff = merged.filter(function(m){ return m.position !== '小鷹'; });
+        html += '<div style="display:flex;gap:8px;width:100%">' +
+          '<div style="flex:3">' + renderSquadBlock('🐥 小鷹', sortByPosition(eagleKids, posRule.squads), '#6aab8e', 3) + '</div>' +
+          '<div style="flex:1">' + renderStaffRow(sortByPosition(eagleStaff, posRule.staff), 1) + '</div>' +
+        '</div>';
+      } else if (r.name === '育') {
+        var knownSquads = squadsOfTroop.concat(ikuSpecialSquads);
+        var staffMembers = merged.filter(function(m){ return knownSquads.indexOf(m.squad) < 0; });
+        html += renderStaffRow(sortByPosition(staffMembers, posRule.staff), 4);
+        html += '<div style="display:flex;gap:8px;width:100%">';
+        squadsOfTroop.forEach(function(sq, i) {
+          var sqMembers = merged.filter(function(m){ return m.squad === sq; });
+          var dispSq = SQUAD_EMOJI[sq] || sq;
+          html += '<div style="flex:1;min-width:120px">' + renderSquadBlock(dispSq, sortByPosition(sqMembers, posRule.squads), sqColors[i % sqColors.length]) + '</div>';
+        });
+        html += '</div>';
+        ikuSpecialSquads.forEach(function(sq) {
+          var sqMembers = merged.filter(function(m){ return m.squad === sq; });
+          if (sqMembers.length) html += renderSquadBlock(sq, sqMembers, '#7a8a9e');
+        });
+      } else if (squadsOfTroop.length > 0) {
+        var staffMembers = merged.filter(function(m){ return squadsOfTroop.indexOf(m.squad) < 0; });
+        html += renderStaffRow(sortByPosition(staffMembers, posRule.staff), 4);
+        html += '<div style="display:flex;gap:8px;width:100%">';
+        squadsOfTroop.forEach(function(sq, i) {
+          var sqMembers = merged.filter(function(m){ return m.squad === sq; });
+          html += '<div style="flex:1;min-width:120px">' + renderSquadBlock(SQUAD_EMOJI[sq]||sq, sortByPosition(sqMembers, posRule.squads), sqColors[i % sqColors.length]) + '</div>';
+        });
+        html += '</div>';
+      } else {
+        html += renderSquadBlock(dispName, merged, 'var(--forest-md)');
+      }
+
+      var withNote = rsvpMembers.filter(function(m){ return m.note && m.note.trim(); });
+      if (withNote.length) {
+        html += '<div style="width:100%;border-top:1px dashed #c8dbd0;margin-top:4px;padding-top:6px">' +
+          '<div style="font-size:16px;font-weight:700;color:var(--ink-soft);margin-bottom:4px">備註</div>';
+        withNote.forEach(function(m) {
+          html += '<div style="font-size:20px;padding:2px 0;display:flex;gap:6px">' +
+            '<span style="font-weight:600;color:var(--forest-md);white-space:nowrap;min-width:48px">' + esc(m.naturalName || m.name) + '</span>' +
+            '<span style="color:#666">：' + esc(m.note) + '</span>' +
+          '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div></div>';
+    });
+  }
+
+  el.innerHTML = html;
+}
+
+// ── 5. 後台統計 (Admin Stats) ─────────────────────────────────────
+
+function setStatsMode(mode) {
+  S.statsMode = mode;
+  document.querySelectorAll('#act-stats-section .seg-btn').forEach(function(b,i){
+    b.classList.toggle('active', ['family','troop'][i] === mode);
+  });
+  loadStats();
+}
+
+function loadStats() {
+  var aid = document.getElementById('stats-act-sel').value;
+  var el  = document.getElementById('stats-content');
+  if (!aid) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="loading"></div>';
+
+  gas('getActivityStats', aid).then(function(stats) {
+    renderStats(el, stats);
+  }).catch(function(){ el.innerHTML = '<div class="empty">載入失敗</div>'; });
+}
+
+function renderStats(el, stats) {
+  var circ = 2 * Math.PI * 46;
+  var dash = circ * stats.attendRate / 100;
+  var clr  = stats.attendRate >= 70 ? 'var(--forest-lt)' : stats.attendRate >= 40 ? 'var(--amber)' : 'var(--red)';
+
+  var rows = S.statsMode === 'family' ? stats.byFamily : S.statsMode === 'troop' ? stats.byTroop : stats.bySquad;
+  var colLabel = S.statsMode === 'family' ? '家庭' : S.statsMode === 'troop' ? '團別' : '小隊';
+
+  var html = '<div class="stats-row">' +
+    '<div class="stat-box"><div class="stat-num">' + stats.total + '</div><div class="stat-lbl">報名人數</div></div>' +
+    '<div class="stat-box stat-attend"><div class="stat-num">' + stats.attend + '</div><div class="stat-lbl">出席</div></div>' +
+    '<div class="stat-box stat-absent"><div class="stat-num">' + stats.absent + '</div><div class="stat-lbl">不出席</div></div>' +
+    '<div class="stat-box stat-pending"><div class="stat-num">' + stats.pending + '</div><div class="stat-lbl">待確認</div></div>' +
+    '<div class="stat-box"><div class="stat-num" style="color:var(--ink-soft)">' + ((stats.totalMembers||0) - stats.total) + '</div><div class="stat-lbl">未填寫</div></div>' +
+  '</div>' +
+  '<div class="card" style="margin-bottom:16px">' +
+    '<div class="donut-wrap">' +
+      '<div class="donut">' +
+        '<svg width="110" height="110" viewBox="0 0 110 110">' +
+          '<circle cx="55" cy="55" r="46" fill="none" stroke="var(--mist)" stroke-width="12"/>' +
+          '<circle cx="55" cy="55" r="46" fill="none" stroke="' + clr + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + dash + ' ' + circ + '"/>' +
+        '</svg>' +
+        '<div class="donut-center"><span class="donut-pct" style="color:' + clr + '">' + stats.attendRate + '%</span><span class="donut-sub">出席率</span></div>' +
+      '</div>' +
+      '<div class="legend">' +
+        '<div class="legend-item"><div class="ldot" style="background:var(--forest-lt)"></div>出席 ' + stats.attend + ' 人</div>' +
+        '<div class="legend-item"><div class="ldot" style="background:var(--red)"></div>不出席 ' + stats.absent + ' 人</div>' +
+        '<div class="legend-item"><div class="ldot" style="background:var(--amber)"></div>待確認 ' + stats.pending + ' 人</div>' +
+        '<div class="legend-item"><div class="ldot" style="background:var(--line)"></div>未填寫 ' + ((stats.totalMembers||0) - stats.total) + ' 人</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="prog-wrap"><div class="prog-bar" style="width:' + stats.attendRate + '%"></div></div>' +
+  '</div>' +
+  '<div class="tbl-wrap"><table><thead><tr><th>' + colLabel + '</th><th>出席</th><th>不出席</th><th>待確認</th><th>未填寫</th></tr></thead><tbody>' +
+  rows.map(function(r) {
+    var total = r.attend + r.absent + r.pending + (r.unregistered || 0);
+    return '<tr><td>' + esc(r.name) + '</td><td>' + r.attend + '</td><td>' + r.absent + '</td><td>' + r.pending + '</td><td style="color:var(--ink-soft)">' + (r.unregistered || 0) + '</td></tr>';
+  }).join('') +
+  '</tbody></table></div>' +
+  '<div class="flex-end mt-4">' +
+    '<button class="btn btn-outline btn-sm" data-aid="' + document.getElementById('stats-act-sel').value + '" onclick="exportCsv(this.getAttribute(\'data-aid\'))">匯出 CSV</button>' +
+  '</div>';
+
+  el.innerHTML = html;
+}
+
+// ── 6. 匯出 CSV ───────────────────────────────────────────────────
+
+function exportCsv(aid) {
+  gas('exportRsvpCsv', aid).then(function(res) {
+    var a = findById(S.activities, aid);
+    var blob = new Blob(['\uFEFF' + res.csv], { type: 'text/csv;charset=utf-8;' });
+    var url  = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = (a ? a.name : 'activity') + '_出席名單.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    toast('匯出成功', 'success');
+  }).catch(function(){ toast('匯出失敗', 'error'); });
+}
+
+// 報名活動 - 搜尋家庭功能
+function filterRsvpFamilies() {
+  var q = (document.getElementById('rsvp-family-search').value || '').toLowerCase().trim();
+  var list = document.getElementById('rsvp-family-list');
+
+  if (!q) {
+    list.innerHTML = '';
+    return;
+  }
+
+  var html = '';
+  (S.families || []).forEach(function(f) {
+    // 支援名稱或編號搜尋
+    var match = f.name.toLowerCase().indexOf(q) >= 0 || (f.no && f.no.indexOf(q) >= 0);
+    if (!match) return;
+
+    // 渲染成與繳費頁面類似的卡片按鈕
+    html += '<div class="card" style="cursor:pointer; margin-bottom:8px; padding:12px; border-left:4px solid var(--forest-lt);" ' +
+      'onclick="selectRsvpFamily(\'' + f.id + '\')">' +
+      '<div style="font-size:22px; font-weight:700; color:var(--ink);">' + (f.no ? '[' + f.no + '] ' : '') + esc(f.name) + '</div>' +
+      '</div>';
+  });
+
+  list.innerHTML = html || '<div class="empty" style="padding:10px">找不到符合的家庭</div>';
+}
+
+// 點擊搜尋結果中的家庭
+function selectRsvpFamily(fid) {
+  // 1. 將選擇的家庭 ID 塞入原本隱藏的下拉選單 (欺騙系統以為是從選單選的)
+  var sel = document.getElementById('sel-family');
+  if (sel) {
+    sel.innerHTML = '<option value="' + fid + '">Temp</option>';
+    sel.value = fid;
+  }
+  
+  // 2. 呼叫您原本「以家庭報名」的函式
+  if (typeof goRsvpByFamily === 'function') {
+    goRsvpByFamily();
+    
+    // 3. 成功進入後，清空搜尋框以利下次使用
+    document.getElementById('rsvp-family-search').value = '';
+    document.getElementById('rsvp-family-list').innerHTML = '';
+  } else {
+    console.error("找不到 goRsvpByFamily 函式");
+  }
+}
+
+</script>

@@ -1,0 +1,167 @@
+<script>
+// ── 1. 全域狀態管理 (Global State) ────────────────────────────────
+var S = {
+  families:   [],
+  members:    [],
+  activities: [],
+  options:    { troops:[], grades:[], roles:[], squads:[], genders:[] },
+  adminAuth:  false,
+  
+  // 報名流程暫存狀態
+  rsvp: {
+    activityId:   '',
+    activityName: '',
+    mode:         '',
+    squadName:    '',
+    familyId:     '',
+    familyName:   '',
+    memberStatuses: {}
+  },
+  
+  viewMode:  'family',
+  statsMode: 'family',
+  isSubmitting: false // 防止重複送出用的 Flag
+};
+
+// ── 2. 核心工具函式 (Utilities) ───────────────────────────────────
+
+// HTML 防 XSS 注入跳脫
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 封裝 google.script.run 為 Promise 版本，讓呼叫 API 更優雅 (避免 callback 地獄)
+function gas(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function(resolve, reject) {
+    var runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+    runner[fn].apply(runner, args);
+  });
+}
+
+// 陣列搜尋小工具
+function findById(arr, id) {
+  for (var i = 0; i < arr.length; i++) {
+    if (String(arr[i].id) === String(id)) return arr[i];
+  }
+  return null;
+}
+
+// 設定下拉選單數值小工具
+function setSelectValue(id, val) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  for (var i = 0; i < el.options.length; i++) {
+    if (String(el.options[i].value) === String(val)) { el.selectedIndex = i; return; }
+  }
+}
+
+// ── 3. UI 互動元件控制 ──────────────────────────────────────────
+
+// Toast 提示訊息 (type: 'success', 'error', 'warn')
+function toast(msg, type) {
+  var c = document.getElementById('toast-wrap');
+  var el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(function(){ el.remove(); }, 3400);
+}
+
+// 彈出視窗控制
+function openModal(id)  { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// 主頁面切換路由
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  
+  document.getElementById('page-' + id).classList.add('active');
+  
+  document.querySelectorAll('.nav-btn').forEach(function(b){
+    if (b.getAttribute('onclick') && b.getAttribute('onclick').indexOf("'" + id + "'") >= 0) b.classList.add('active');
+  });
+
+  // 觸發特定頁面的初始化動作
+  if (id === 'view' && typeof populateViewActivitySelect === 'function') populateViewActivitySelect();
+  if (id === 'pay' && typeof initPayPage === 'function') initPayPage();
+}
+
+// ── 4. 系統初始化 (Initialization) ────────────────────────────────
+
+window.onload = function() { 
+  initSystem(); 
+};
+
+function initSystem() {
+  console.log("系統初始化中...");
+  loadAllData().then(function() {
+    console.log("資料載入成功，成員數:", S.members.length);
+  }).catch(function(e) {
+    console.error("載入失敗，3秒後重試...", e);
+    setTimeout(initSystem, 3000); // 失敗則重試
+  });
+}
+
+// 載入全域基礎資料 (成員、家庭、活動清單、選單選項)
+function loadAllData() {
+  return gas('getAllData').then(function(d) {
+    S.families   = d.families   || [];
+    S.members    = d.members    || [];
+    S.activities = d.activities || [];
+    S.options    = d.options    || S.options;
+    
+    // 資料載入後，觸發前端渲染 (這些函式會定義在其他 JS 模組中)
+    if (typeof renderActivityListRsvp === 'function') renderActivityListRsvp();
+    populateOptions();
+  }).catch(function(e){ 
+    console.error('loadAllData error:', e); 
+    toast('載入資料失敗', 'error'); 
+  });
+}
+
+// 填充所有靜態下拉選單的選項
+function populateOptions() {
+  function fill(selId, arr, allowEmpty, emptyLabel) {
+    var el = document.getElementById(selId);
+    if (!el) return;
+    var html = allowEmpty ? '<option value="">' + (emptyLabel || '- 請選擇 -') + '</option>' : '';
+    arr.forEach(function(v){ html += '<option value="' + v + '">' + v + '</option>'; });
+    el.innerHTML = html;
+  }
+  
+  fill('mem-gender',   S.options.genders, true, '- 選擇 -');
+  fill('mem-troop',    S.options.troops,  true, '- 選擇 -');
+  fill('mem-grade',    S.options.grades,  true, '- 選擇 -');
+  fill('mem-position', S.options.roles,   true, '- 選擇 -');
+  fill('mem-squad',    S.options.squads,  true, '- 選擇 -');
+
+  // 後台：名冊與篩選的團別/小隊下拉選單
+  var filterTroops = ['filter-troop', 'roster-troop'];
+  filterTroops.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.innerHTML = '<option value="">所有團別</option>';
+      S.options.troops.forEach(function(v){ el.innerHTML += '<option value="' + v + '">' + v + '</option>'; });
+    }
+  });
+
+  var filterSquads = ['filter-squad', 'roster-squad'];
+  filterSquads.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.innerHTML = '<option value="">所有小隊</option>';
+      S.options.squads.forEach(function(v){ el.innerHTML += '<option value="' + v + '">' + v + '</option>'; });
+    }
+  });
+
+  // 後台：報名統計的活動下拉選單
+  var saEl = document.getElementById('stats-act-sel');
+  if (saEl) {
+    saEl.innerHTML = '<option value="">- 選擇活動 -</option>';
+    S.activities.forEach(function(a){ saEl.innerHTML += '<option value="' + a.id + '">' + esc(a.name) + '</option>'; });
+  }
+}
+</script>

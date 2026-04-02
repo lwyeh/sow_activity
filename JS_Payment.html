@@ -1,0 +1,1087 @@
+<script>
+// ================================================================
+//  JS_Payment.html - 全功能終極完整版 (含動態繳費方式選單)
+// ================================================================
+
+var _payCurrentFamilyId = '';
+var _payCurrentFamilyName = '';
+var _currentSummaries = []; 
+
+// ── 系統共用：自訂確認對話框引擎 ──
+var _confirmCallback = null;
+function showCustomConfirm(msg, callback) {
+  document.getElementById('custom-confirm-msg').innerHTML = msg;
+  _confirmCallback = callback;
+  openModal('modal-custom-confirm');
+}
+function executeCustomConfirm() {
+  closeModal('modal-custom-confirm');
+  if (typeof _confirmCallback === 'function') {
+    _confirmCallback();
+    _confirmCallback = null; // 執行完後清空
+  }
+}
+
+function initPayPage() {
+  var inp = document.getElementById('pay-family-search');
+  if (inp) inp.value = '';
+  var list = document.getElementById('pay-family-list');
+  if (list) list.innerHTML = '';
+  var sec = document.getElementById('pay-items-section');
+  if (sec) sec.style.display = 'none';
+  _payCurrentFamilyId = '';
+  _payCurrentFamilyName = '';
+  _currentSummaries = [];
+}
+
+function filterPayFamilies() {
+  var q    = (document.getElementById('pay-family-search').value || '').toLowerCase().trim();
+  var list = document.getElementById('pay-family-list');
+  if (!q) { list.innerHTML = ''; return; }
+  var html = '';
+  S.families.forEach(function(f) {
+    var match = f.name.toLowerCase().indexOf(q) >= 0 || (f.no && f.no.indexOf(q) >= 0);
+    if (!match) return;
+    html += '<div class="member-row" style="cursor:pointer;margin-bottom:6px" ' +
+      'onclick="selectPayFamily(\'' + f.id + '\',\'' + esc(f.name) + '\')">' +
+      '<div style="font-weight:700">' + (f.no ? '[' + f.no + '] ' : '') + esc(f.name) + '</div>' +
+      '</div>';
+  });
+  list.innerHTML = html || '<div class="empty" style="padding:10px">找不到符合的家庭</div>';
+}
+
+function selectPayFamily(fid, fname) {
+  _payCurrentFamilyId = fid;
+  _payCurrentFamilyName = fname;
+  document.getElementById('pay-family-search').value = fname;
+  document.getElementById('pay-family-list').innerHTML = '';
+  document.getElementById('pay-family-title').textContent = '家庭繳費項目：' + fname;
+  document.getElementById('pay-items-section').style.display = 'block';
+  loadPayItems(fid);
+}
+
+function loadPayItems(fid) {
+  var el = document.getElementById('pay-items-list');
+  el.innerHTML = '<div class="loading"></div>';
+  gas('getPaySummaryByFamily', fid).then(function(summaries) {
+    _currentSummaries = summaries || [];
+    if (!_currentSummaries.length) {
+      el.innerHTML = '<div class="empty">目前沒有收費項目</div>';
+      return;
+    }
+    var html = '';
+    _currentSummaries.forEach(function(s) {
+      var isPaid = false;
+      var statusBadge = '';
+      var borderColor = '';
+      var hasActive = s.records.some(function(r){ return r.status === '已送出'; });
+
+      // 狀態與標籤判斷
+      if (s.remaining === 0) {
+        isPaid = true;
+        statusBadge = '<span class="badge badge-attend">已結清</span>';
+        borderColor = 'var(--forest-lt)';
+      } else if (s.remaining < 0) {
+        statusBadge = '<span class="badge" style="background:var(--amber);color:#fff;padding:4px 8px;border-radius:4px;font-size:16px;">待退費</span>';
+        borderColor = 'var(--amber)';
+      } else {
+        if (hasActive) {
+          statusBadge = '<span class="badge badge-pending">待確認</span>';
+          borderColor = 'var(--amber)';
+        } else {
+          statusBadge = '<span class="badge badge-absent">未結清</span>';
+          borderColor = 'var(--red)';
+        }
+      }
+
+      html += '<div class="card" style="margin-bottom:14px;border-left:4px solid ' + borderColor + '">';
+
+      // 標題列 (已移除前端的調整明細按鈕)
+      html += '<div class="flex-between" style="margin-bottom:10px">' +
+        '<div>' +
+          '<div style="font-weight:700;font-size:27px">' + esc(s.actName) + '</div>' +
+          '<div style="font-size:22px;color:var(--ink-soft);margin-top:3px">' +
+            '應繳：<strong style="color:var(--ink)">$' + s.totalAmount + '</strong>　' +
+            '已繳：<strong style="color:var(--forest-lt)">$' + s.paidTotal + '</strong>　' +
+            (s.remaining < 0 ? 
+              '待退：<strong style="color:var(--amber)">$' + Math.abs(s.remaining) + '</strong>' :
+              '未繳：<strong style="color:var(--red)">$' + Math.max(0, s.remaining) + '</strong>') +
+          '</div>' +
+        '</div>' +
+        '<div>' + statusBadge + '</div>' +
+      '</div>';
+
+      // 顯示繳費說明
+      if (s.actNote) {
+        html += '<div style="background:var(--cream); border:1px dashed var(--forest-lt); border-radius:6px; padding:10px; margin-bottom:10px; font-size:18px; color:var(--forest-md); line-height:1.6;">' +
+                '<strong style="color:var(--forest);">💡 繳費說明：</strong><br>' + esc(s.actNote).replace(/\n/g, '<br>') +
+                '</div>';
+      }
+
+      // 明細列表 (自然名優先)
+      if (s.details && s.details.length) {
+        html += '<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:22px;color:var(--forest-lt)">查看明細（' + s.details.length + ' 項）</summary>';
+        html += '<div style="margin-top:8px;background:var(--mist);border-radius:6px;padding:8px">';
+        s.details.forEach(function(d) {
+          var dispName = d.naturalName || d.memberName;
+          html += '<div style="display:flex;justify-content:space-between;font-size:20px;padding:3px 0;border-bottom:1px solid var(--line)">' +
+            '<span>' + esc(dispName) + ' — ' + esc(d.equipName) + ' x' + d.qty + '</span>' +
+            '<span style="color:var(--forest-md)">$' + d.subtotal + '</span>' +
+          '</div>';
+        });
+        html += '</div></details>';
+      }
+
+      // 歷史繳費紀錄
+      if (s.records && s.records.length) {
+        html += '<div style="background:var(--mist);border-radius:6px;padding:8px;margin-bottom:10px">' +
+          '<div style="font-size:20px;font-weight:700;color:var(--ink-soft);margin-bottom:4px">繳費紀錄</div>';
+        s.records.forEach(function(r) {
+          var sc = r.status === '已確認' ? 'color:var(--forest-lt)' : r.status === '已退回' ? 'color:var(--red)' : 'color:var(--amber)';
+          html += '<div style="display:flex;justify-content:space-between;font-size:20px;margin-bottom:4px">' +
+            '<span>' + esc(r.submitAt) + ' ' + esc(r.method) + ' $' + r.amount + (r.note?' ('+esc(r.note)+')':'') + '</span>' +
+            '<span style="font-weight:700;' + sc + '">' + r.status + '</span>' +
+          '</div>';
+          if (r.rejectNote) html += '<div style="color:var(--red);font-size:18px;margin-bottom:4px">退回原因：' + esc(r.rejectNote) + '</div>';
+        });
+        html += '</div>';
+      }
+
+      // ── 操作按鈕區 ──
+      var pendingTotal = 0;
+      s.records.forEach(function(r) {
+        if (r.status === '已送出' || r.status === '待確認') {
+          pendingTotal += r.amount;
+        }
+      });
+      var realRemaining = Math.max(0, s.remaining - pendingTotal);
+
+      if (!isPaid || String(s.actType || '').trim().toLowerCase() === 'type1' || s.remaining < 0) {
+        html += '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px">';
+
+        if (String(s.actType || '').trim().toLowerCase() === 'type1') {
+          var searchInput = document.getElementById('pay-family-search');
+          var currentSearchName = searchInput ? searchInput.value.trim() : "";
+          var famMembers = (S.members || []).filter(function(m) {
+            var idMatch = String(m.familyId || '').trim() === String(fid || '').trim();
+            var nameMatch = String(m.familyName || '').trim() === currentSearchName;
+            return (idMatch || nameMatch) && (m.position || '') !== '離團';
+          });
+
+          if (famMembers.length > 0) {
+            famMembers.forEach(function(m) {
+              var dispName = m.naturalName || m.name || '成員';
+              html += '<button class="btn btn-outline btn-xs" ' +
+                // ★ 這裡在最後面加了 , this 將按鈕元素本身傳過去
+                'onclick="openType1Selection(\'' + s.actId + '\',\'' + esc(s.actName) + '\',\'' + fid + '\',\'' + m.id + '\', this)">' +
+                esc(dispName) + '—選設備</button>';
+            });
+          } else {
+            html += '<button class="btn btn-outline btn-xs" style="color:var(--red); border-color:var(--red)" ' +
+              // ★ 這裡同樣加上 , this
+              'onclick="openType1Selection(\'' + s.actId + '\',\'' + esc(s.actName) + '\',\'' + fid + '\',\'\', this)">管理設備項目</button>';
+          }
+        }
+
+        // 分次繳費顯示
+        if (realRemaining > 0) {
+          html += '<button class="btn btn-primary btn-sm" ' +
+            'onclick="openPaySubmit(\'' + s.actId + '\',\'' + esc(s.actName) + '\',' + realRemaining + ',\'' + fid + '\')">回報繳費</button>';
+        }
+
+        // 待退款顯示 (限管理員)
+        if (s.remaining < 0 && S.adminAuth) {
+          html += '<button class="btn btn-green btn-sm" onclick="adminDirectRefund(\'' + s.actId + '\',\'' + fid + '\',' + s.remaining + ')">紀錄已退款</button>';
+        }
+
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  }).catch(function(e) {
+    console.error(e);
+    el.innerHTML = '<div class="empty">載入失敗</div>';
+  });
+}
+
+function openPaySubmit(actId, actName, remaining, familyId) {
+  var noteHtml = '';
+  var s = _currentSummaries.filter(function(x){ return x.actId === actId; })[0];
+  
+  if (s && s.actNote) {
+     noteHtml = '<div style="margin-top:10px; padding-top:10px; border-top:1px dashed #ccc; color:var(--forest); font-size:18px;"><strong style="color:var(--forest);">💡 繳費說明：</strong><br>' + esc(s.actNote).replace(/\n/g, '<br>') + '</div>';
+  }
+
+  document.getElementById('paysubmit-actid').value    = actId;
+  document.getElementById('paysubmit-familyid').value = familyId;
+  document.getElementById('paysubmit-amount').value   = remaining;
+  document.getElementById('paysubmit-note').value     = '';
+  document.getElementById('paysubmit-info').innerHTML = '<strong>活動：</strong>' + actName + '<br><strong>未繳金額：</strong>$' + remaining + noteHtml;
+  
+  // ★ 動態載入該活動允許的繳費方式
+  var allowedMethods = (s && s.actMethods && s.actMethods.length > 0) ? s.actMethods : ['現金','LinePay','iPassMoney','轉帳','其他'];
+  var methodSel = document.getElementById('paysubmit-method');
+  methodSel.innerHTML = '';
+  allowedMethods.forEach(function(m) {
+    methodSel.innerHTML += '<option value="' + m + '">' + m + '</option>';
+  });
+
+  var btn = document.getElementById('paysubmit-btn');
+  btn.disabled = false; btn.textContent = '送出繳費';
+  openModal('modal-paysubmit');
+}
+
+function submitPayRecord() {
+  var amount = parseInt(document.getElementById('paysubmit-amount').value, 10);
+  if (!amount || amount <= 0) { toast('請輸入正確金額', 'warn'); return; }
+  var btn = document.getElementById('paysubmit-btn');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = '處理中...';
+
+  var data = {
+    actId: document.getElementById('paysubmit-actid').value,
+    familyId: document.getElementById('paysubmit-familyid').value,
+    amount: amount,
+    method: document.getElementById('paysubmit-method').value, // 取得使用者選擇的付款方式
+    note: document.getElementById('paysubmit-note').value
+  };
+
+  gas('submitPayRecord', data).then(function() {
+    toast('繳費回報已送出！', 'success');
+    closeModal('modal-paysubmit');
+    loadPayItems(data.familyId);
+  }).catch(function() {
+    toast('送出失敗', 'error');
+    btn.disabled = false; btn.textContent = '送出繳費';
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 2. 管理端 - 收費活動管理
+// ─────────────────────────────────────────────────────────────────
+
+var _currentPayActs  = [];
+var _editPayActId    = '';
+var _editPayActType  = '';    
+var _payEquips       = [];
+var _type2BatchItems = [];
+var _addEquipBusy    = false;
+
+function loadPayActs() {
+  var el = document.getElementById('payacts-list');
+  el.innerHTML = '<div class="loading"></div>';
+  gas('getPayActivities').then(function(acts) {
+    _currentPayActs = acts;
+    _refreshPayActSelects(acts);
+
+    if (!acts.length) { el.innerHTML = '<div class="empty">沒有收費活動</div>'; return; }
+    el.innerHTML = acts.map(function(a) {
+      var typeLabel = a.type === 'type1'
+        ? '<span class="badge badge-pending" style="font-size:20px">自選設備</span>'
+        : '<span class="badge badge-troop" style="font-size:20px">管理者指定</span>';
+      return '<div class="card flex-between" style="margin-bottom:10px">' +
+        '<div>' +
+          '<div style="font-size:24px;font-weight:700">' + esc(a.name) + '　' + typeLabel + '</div>' +
+          '<div style="font-size:20px;color:var(--ink-soft)">建立：' + a.createdAt + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button class="btn btn-outline btn-sm" onclick="openEditPayAct(\'' + a.id + '\')">管理</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="deletePayAct(\'' + a.id + '\')">刪除</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }).catch(function() { el.innerHTML = '<div class="empty">載入失敗</div>'; });
+}
+
+function _refreshPayActSelects(acts) {
+  ['payreport-act', 'paycheck-filter-act'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var cur = el.value;
+    el.innerHTML = id === 'payreport-act' ? '<option value="">請選擇收費活動</option>' : '<option value="">所有活動</option>';
+    acts.forEach(function(a) {
+      el.innerHTML += '<option value="' + a.id + '"' + (cur === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>';
+    });
+  });
+}
+
+function openNewPayActModal() { openModal('modal-payact-type'); }
+
+function choosePayActType(type) {
+  closeModal('modal-payact-type');
+  _editPayActId = ''; _editPayActType = type; _payEquips = []; _type2BatchItems = [];
+  document.getElementById('payact-modal-title').textContent = type === 'type1' ? '新增收費活動（自選設備）' : '新增收費活動（管理者指定）';
+  document.getElementById('payact-name').value = ''; 
+  document.getElementById('payact-note').value = '';
+  
+  // ★ 新增時，預設將所有繳費方式打勾
+  var methodCbs = document.querySelectorAll('.payact-method-cb');
+  methodCbs.forEach(function(cb) { cb.checked = true; });
+
+  document.getElementById('payact-type1-section').style.display = type === 'type1' ? '' : 'none';
+  document.getElementById('payact-type2-section').style.display = type === 'type2' ? '' : 'none';
+  
+  _renderEquipList(); _renderType2Batch();
+  populateType2SingleMembers();
+
+  var btn = document.getElementById('payact-save-btn'); btn.disabled = false; btn.textContent = '儲存活動';
+  openModal('modal-payact-edit');
+}
+
+function openEditPayAct(actId) {
+  var act = null;
+  for (var i = 0; i < _currentPayActs.length; i++) { if (_currentPayActs[i].id === actId) { act = _currentPayActs[i]; break; } }
+  if (!act) return;
+  _editPayActId = actId; _editPayActType = act.type || 'type2'; _type2BatchItems = [];
+  document.getElementById('payact-modal-title').textContent = '管理收費活動：' + act.name;
+  document.getElementById('payact-name').value = act.name;
+  document.getElementById('payact-note').value = act.note || '';
+
+  // ★ 編輯時，根據資料庫設定勾選對應的繳費方式
+  var allowedMethods = act.methods || ['現金','LinePay','iPassMoney','轉帳','其他'];
+  var methodCbs = document.querySelectorAll('.payact-method-cb');
+  methodCbs.forEach(function(cb) { 
+    cb.checked = (allowedMethods.indexOf(cb.value) >= 0); 
+  });
+
+  document.getElementById('payact-type1-section').style.display = _editPayActType === 'type1' ? '' : 'none';
+  document.getElementById('payact-type2-section').style.display = _editPayActType === 'type2' ? '' : 'none';
+  var btn = document.getElementById('payact-save-btn'); btn.disabled = false; btn.textContent = '更新活動名稱/說明';
+  
+  gas('getPayEquips', actId).then(function(equips) {
+    _payEquips = equips || []; 
+    _renderEquipList(); 
+    refreshType2EquipSel(); 
+    _renderType2Batch();
+    populateType2SingleMembers();
+  });
+  openModal('modal-payact-edit');
+}
+
+function savePayActBasic() {
+  var name = document.getElementById('payact-name').value.trim();
+  if (!name) { toast('請輸入活動名稱', 'warn'); return; }
+
+  // ★ 收集管理員勾選的繳費方式
+  var checkedMethods = [];
+  document.querySelectorAll('.payact-method-cb:checked').forEach(function(cb) {
+    checkedMethods.push(cb.value);
+  });
+  if (checkedMethods.length === 0) { toast('請至少勾選一種繳費方式', 'warn'); return; }
+
+  var btn = document.getElementById('payact-save-btn');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = '儲存中...';
+
+  gas('savePayActivity', { 
+    id: _editPayActId || '', 
+    name: name, 
+    note: document.getElementById('payact-note').value.trim(), 
+    type: _editPayActType,
+    methods: checkedMethods // ★ 傳送給後端儲存
+  }).then(function(res) {
+    _editPayActId = res.id; toast('活動已儲存，請繼續設定設備', 'success');
+    btn.disabled = false; btn.textContent = '更新活動名稱/說明'; loadPayActs();
+  }).catch(function() { toast('儲存失敗', 'error'); btn.disabled = false; btn.textContent = '儲存活動'; });
+}
+
+function addEquip() {
+  if (_addEquipBusy) return;
+  var prefix = _editPayActType === 'type1' ? 't1-' : 't2-';
+  var ename  = document.getElementById(prefix + 'equip-name').value.trim();
+  var eprice = parseInt(document.getElementById(prefix + 'equip-price').value, 10);
+  var eqty   = parseInt(document.getElementById(prefix + 'equip-qty').value, 10) || 0;
+  var ecat   = _editPayActType === 'type1' ? document.getElementById(prefix + 'equip-category').value : '使用者';
+
+  if (!ename) { toast('請輸入設備名稱', 'warn'); return; }
+  if (isNaN(eprice)) { toast('請輸入金額', 'warn'); return; }
+
+  _addEquipBusy = true;
+  var addBtn = document.getElementById(prefix + 'equip-add-btn');
+  addBtn.disabled = true; addBtn.textContent = '新增中...';
+
+  var ensureActSaved = _editPayActId ? Promise.resolve({ id: _editPayActId }) : (function() {
+    var name = document.getElementById('payact-name').value.trim();
+    if (!name) { toast('請先填寫活動名稱', 'warn'); return Promise.reject('no name'); }
+    
+    var checkedMethods = [];
+    document.querySelectorAll('.payact-method-cb:checked').forEach(function(cb) { checkedMethods.push(cb.value); });
+
+    return gas('savePayActivity', { id: '', name: name, note: document.getElementById('payact-note').value.trim(), type: _editPayActType, methods: checkedMethods }).then(function(res) {
+      _editPayActId = res.id; document.getElementById('payact-save-btn').textContent = '更新活動名稱/說明'; loadPayActs(); return res;
+    });
+  })();
+
+  ensureActSaved.then(function() {
+    return gas('addPayEquip', { actId: _editPayActId, name: ename, price: eprice, maxQty: eqty, category: ecat });
+  }).then(function() {
+    toast('已新增', 'success');
+    document.getElementById(prefix + 'equip-name').value = ''; document.getElementById(prefix + 'equip-price').value = ''; document.getElementById(prefix + 'equip-qty').value = '';
+    return gas('getPayEquips', _editPayActId);
+  }).then(function(equips) {
+    _payEquips = equips || []; _renderEquipList(); refreshType2EquipSel();
+  }).catch(function(e) { if (e !== 'no name') toast('新增失敗', 'error'); }).finally(function() {
+    _addEquipBusy = false; addBtn.disabled = false; addBtn.textContent = _editPayActType === 'type1' ? '新增設備' : '新增費用項目';
+  });
+}
+
+// 替換 4：刪除收費設備項目
+function deleteEquip(equipId) {
+  showCustomConfirm('確定刪除此設備？<br><span style="color:var(--red);font-size:16px;">相關明細也會一併刪除。</span>', function() {
+    gas('deletePayEquip', equipId).then(function() {
+      toast('已刪除', 'success');
+      _payEquips = _payEquips.filter(function(e){ return e.id !== equipId; });
+      _renderEquipList(); refreshType2EquipSel();
+    }).catch(function() { toast('刪除失敗', 'error'); });
+  });
+}
+
+function _renderEquipList() {
+  var listId = _editPayActType === 'type1' ? 't1-equip-list' : 't2-equip-list';
+  var el = document.getElementById(listId);
+  if (!el) return;
+  if (!_payEquips.length) { el.innerHTML = '<div style="color:var(--ink-soft);font-size:20px;text-align:center;padding:10px">尚無設備</div>'; return; }
+  var showCategory = (_editPayActType === 'type1');
+  var html = '<div class="tbl-wrap"><table><thead><tr><th>名稱</th><th>金額</th><th>數量上限</th>';
+  if (showCategory) html += '<th>種類</th>';
+  html += '<th></th></tr></thead><tbody>';
+  _payEquips.forEach(function(e) {
+    var catBadge = e.category === '使用者' ? '<span class="badge badge-attend" style="font-size:18px">使用者</span>' : '<span class="badge badge-pending" style="font-size:18px">管理者</span>';
+    html += '<tr><td>' + esc(e.name) + '</td><td style="color:' + (e.price < 0 ? 'var(--red)' : 'var(--forest-md)') + '">$' + e.price + '</td><td>' + (e.maxQty || '不限') + '</td>';
+    if (showCategory) html += '<td>' + catBadge + '</td>';
+    html += '<td><button class="btn btn-danger btn-xs" onclick="deleteEquip(\'' + e.id + '\')">刪除</button></td></tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function refreshType2EquipSel() {
+  var sel = document.getElementById('type2-equip-sel');
+  if (!sel) return;
+  var cur = sel.value;
+  sel.innerHTML = '<option value="">選擇費用項目</option>';
+  _payEquips.forEach(function(e) { sel.innerHTML += '<option value="' + e.id + '"' + (cur === e.id ? ' selected' : '') + '>' + esc(e.name) + '（$' + e.price + '）</option>'; });
+}
+
+function quickSelectType2(pos) {
+  if (!_editPayActId) { toast('請先儲存活動名稱', 'warn'); return; }
+  var equipId = document.getElementById('type2-equip-sel').value;
+  var equipName = ''; var unitPrice = 0;
+  _payEquips.forEach(function(e){ if (e.id === equipId) { equipName = e.name; unitPrice = e.price; } });
+  if (!equipId) { toast('請先選擇費用項目', 'warn'); return; }
+  var qty = parseInt(document.getElementById('type2-qty').value, 10) || 1;
+  var targets = [];
+  if (pos === '清除') { _type2BatchItems = []; _renderType2Batch(); return; }
+  if (pos === '全部') { targets = S.members.filter(function(m){ return m.position !== '離團'; }); } 
+  else if (pos === '戶長') { var seen = {}; S.members.forEach(function(m){ if (m.role === '家長' && !seen[m.familyId]) { targets.push(m); seen[m.familyId] = true; } }); } 
+  else { targets = S.members.filter(function(m){ return m.position === pos; }); }
+
+  targets.forEach(function(m) {
+    var exists = _type2BatchItems.some(function(i){ return i.memberId === m.id && i.equipId === equipId; });
+    if (!exists) {
+      var dispName = m.naturalName || m.name; 
+      _type2BatchItems.push({ memberId: m.id, familyId: m.familyId, name: dispName, equipId: equipId, equipName: equipName, qty: qty, unitPrice: unitPrice, subtotal: qty * unitPrice });
+    }
+  });
+  _renderType2Batch(); toast('已加入 ' + targets.length + ' 人', 'success');
+}
+
+function addType2SingleMember() {
+  if (!_editPayActId) { toast('請先儲存活動名稱', 'warn'); return; }
+  
+  var equipId = document.getElementById('type2-equip-sel').value;
+  var memberId = document.getElementById('type2-single-member-sel').value;
+  var qty = parseInt(document.getElementById('type2-qty').value, 10) || 1;
+
+  if (!equipId) { toast('請先選擇費用項目', 'warn'); return; }
+  if (!memberId) { toast('請選擇要加入的成員', 'warn'); return; }
+
+  var equipName = ''; var unitPrice = 0;
+  _payEquips.forEach(function(e){ if (e.id === equipId) { equipName = e.name; unitPrice = e.price; } });
+
+  var m = S.members.filter(function(x){ return x.id === memberId; })[0];
+  if (!m) return;
+
+  var exists = _type2BatchItems.some(function(i){ return i.memberId === m.id && i.equipId === equipId; });
+  if (!exists) {
+    var dispName = m.naturalName || m.name; 
+    _type2BatchItems.push({ memberId: m.id, familyId: m.familyId, name: dispName, equipId: equipId, equipName: equipName, qty: qty, unitPrice: unitPrice, subtotal: qty * unitPrice });
+    _renderType2Batch();
+    toast('已個別加入：' + dispName, 'success');
+  } else {
+    toast('此成員已經在名單中了！', 'warn');
+  }
+}
+
+function removeType2Item(idx) { _type2BatchItems.splice(idx, 1); _renderType2Batch(); }
+
+function _renderType2Batch() {
+  var el = document.getElementById('type2-batch-list'); if (!el) return;
+  if (!_type2BatchItems.length) { el.innerHTML = '<div style="color:var(--ink-soft);font-size:20px;text-align:center;padding:10px">名單為空</div>'; return; }
+  var html = '<div style="max-height:240px;overflow-y:auto">';
+  _type2BatchItems.forEach(function(item, idx) {
+    html += '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:5px 0;font-size:20px">' +
+      '<span>' + esc(item.name) + ' — ' + esc(item.equipName) + ' x' + item.qty + '</span><span style="color:var(--forest-md)">$' + item.subtotal +
+      ' <button style="background:none;border:none;color:var(--red);cursor:pointer;margin-left:6px" onclick="removeType2Item(' + idx + ')">✕</button></span></div>';
+  });
+  html += '</div><div style="font-size:20px;color:var(--ink-soft);margin-top:6px">共 ' + _type2BatchItems.length + ' 筆</div>';
+  el.innerHTML = html;
+}
+
+function saveType2Batch() {
+  if (!_editPayActId) { toast('請先儲存活動名稱', 'warn'); return; }
+  if (!_type2BatchItems.length) { toast('名單為空', 'warn'); return; }
+  var btn = document.getElementById('type2-save-btn');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = '儲存中...';
+
+  gas('saveType2Batch', _editPayActId, _type2BatchItems).then(function() {
+    toast('批次指定已儲存', 'success'); _type2BatchItems = []; _renderType2Batch();
+  }).catch(function() { toast('儲存失敗', 'error'); }).finally(function() { btn.disabled = false; btn.textContent = '儲存這批指定'; });
+}
+
+// 替換 5：刪除整個收費活動
+function deletePayAct(id) {
+  showCustomConfirm('刪除活動將一併刪除所有設備、明細與繳費紀錄，確定嗎？<br><span style="color:var(--red);font-size:16px;">(此操作無法復原)</span>', function() {
+    gas('deletePayActivity', id).then(function() { 
+      toast('已刪除', 'success'); loadPayActs(); 
+    }).catch(function() { toast('刪除失敗', 'error'); });
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 3. 對帳管理（管理端）
+// ─────────────────────────────────────────────────────────────────
+
+var _currentRejectId = null;
+
+function loadPayCheck() {
+  var el = document.getElementById('paycheck-list');
+  var filterAct = (document.getElementById('paycheck-filter-act') || {}).value || '';
+  el.innerHTML = '<div class="loading"></div>';
+
+  Promise.all([
+    gas('getPendingPayRecords', filterAct),
+    gas('getPendingRefunds', filterAct)
+  ]).then(function(results) {
+    var records = results[0] || [];
+    var refunds = results[1] || [];
+
+    if (!records.length && !refunds.length) { 
+      el.innerHTML = '<div class="empty">目前沒有待確認的繳費或待退費</div>'; 
+      return; 
+    }
+    
+    var html = '';
+
+    // 待退費區塊
+    refunds.forEach(function(r) {
+      html += '<div class="card" style="margin-bottom:10px; border-left:4px solid var(--amber)" id="pref-' + r.id + '">' +
+        '<div style="font-size:20px;color:var(--forest-lt);font-weight:700;margin-bottom:4px">' + esc(r.actName) + '</div>' +
+        '<div class="flex-between">' +
+          '<div>' +
+            '<div style="font-size:24px;font-weight:700">' + (r.familyNo ? '['+r.familyNo+'] ' : '') + esc(r.familyName) + '</div>' +
+            '<div style="font-size:20px;color:var(--red)">應退金額：$' + Math.abs(r.amount) + '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center">' +
+            '<span class="badge" style="background:var(--amber);color:#fff;margin-right:4px">待退費</span>' +
+            '<button class="btn btn-outline btn-sm" onclick="openAdminAdjust(\'' + r.actId + '\',\'' + r.familyId + '\',\'' + esc(r.familyName) + '\')">調整明細</button>' +
+            '<button class="btn btn-green btn-sm" onclick="adminDirectRefundFromCheck(\'' + r.actId + '\',\'' + r.familyId + '\',' + r.amount + ', \'' + r.id + '\')">紀錄已退款</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    });
+
+    // 待確認繳費區塊
+    records.forEach(function(r) {
+      html += '<div class="card" style="margin-bottom:10px" id="prec-' + r.id + '">' +
+        '<div style="font-size:20px;color:var(--forest-lt);font-weight:700;margin-bottom:4px">' + esc(r.actName) + '</div>' +
+        '<div class="flex-between"><div>' +
+            '<div style="font-size:24px;font-weight:700">' + (r.familyNo ? '['+r.familyNo+'] ' : '') + esc(r.familyName) + '</div>' +
+            '<div style="font-size:20px;color:var(--ink-soft)">' + esc(r.method) + ' | $' + r.amount + ' | ' + esc(r.submitAt) + '</div>' +
+            (r.note ? '<div style="font-size:18px;color:#666;margin-top:2px">備註：' + esc(r.note) + '</div>' : '') +
+          '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' +
+            '<button class="btn btn-outline btn-sm" onclick="openAdminAdjust(\'' + r.actId + '\',\'' + r.familyId + '\',\'' + esc(r.familyName) + '\')">調整明細</button>' +
+            '<button class="btn btn-green btn-sm" id="confirm-btn-' + r.id + '" onclick="doConfirmPayRecord(\'' + r.id + '\')">確認</button>' +
+            '<button class="btn btn-danger btn-sm" onclick="openRejectPay(\'' + r.id + '\')">退回</button>' +
+          '</div></div></div>';
+    });
+    el.innerHTML = html;
+  }).catch(function() { el.innerHTML = '<div class="empty">載入失敗</div>'; });
+}
+
+function doConfirmPayRecord(id) {
+  var btn = document.getElementById('confirm-btn-' + id);
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn.textContent = '處理中...'; }
+  gas('confirmPayRecord', id).then(function() {
+    toast('已確認繳費', 'success'); var card = document.getElementById('prec-' + id); if (card) card.remove();
+  }).catch(function() { toast('操作失敗', 'error'); if (btn) { btn.disabled = false; btn.textContent = '確認'; } });
+}
+
+function openRejectPay(id) {
+  _currentRejectId = id;
+  document.getElementById('payreject-reason').value = '';
+  var btn = document.getElementById('payreject-btn'); btn.disabled = false; btn.textContent = '確認退回';
+  openModal('modal-payreject');
+}
+
+function confirmReject() {
+  var reason = document.getElementById('payreject-reason').value.trim();
+  if (!reason) { toast('請填寫退回原因', 'warn'); return; }
+  var btn = document.getElementById('payreject-btn');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = '處理中...';
+  gas('rejectPayRecord', _currentRejectId, reason).then(function() {
+    toast('已退回', 'success'); closeModal('modal-payreject'); var card = document.getElementById('prec-' + _currentRejectId); if (card) card.remove();
+  }).catch(function() { toast('操作失敗', 'error'); btn.disabled = false; btn.textContent = '確認退回'; });
+}
+
+// ── 對帳調整明細 (管理員快速調整入口) ──
+var _adminAdjActId = ''; var _adminAdjFamId = ''; var _adminAdjBusy  = false;
+
+function openAdminAdjust(actId, familyId, familyName) {
+  _adminAdjActId = actId; _adminAdjFamId = familyId;
+  document.getElementById('adj-family-title').textContent = '調整明細：' + familyName;
+
+  var sel = document.getElementById('adj-member-sel');
+  sel.innerHTML = '<option value="">選擇成員</option>';
+  S.members.forEach(function(m) {
+    if (String(m.familyId) === String(familyId)) {
+      var dispName = m.naturalName || m.name; 
+      sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + '</option>';
+    }
+  });
+
+  gas('getPayEquips', actId).then(function(equips) {
+    var esel = document.getElementById('adj-equip-sel');
+    esel.innerHTML = '<option value="">自填設備名稱</option>';
+    equips.forEach(function(e) {
+      esel.innerHTML += '<option value="' + e.id + '" data-price="' + e.price + '" data-name="' + esc(e.name) + '">(' + e.category + ') ' + esc(e.name) + ' $' + e.price + '</option>';
+    });
+    esel.onchange = function() {
+      var opt = esel.options[esel.selectedIndex];
+      if (opt.dataset.price !== undefined && opt.dataset.price !== '') document.getElementById('adj-unit-price').value = opt.dataset.price;
+      if (opt.dataset.name) document.getElementById('adj-equip-name').value = opt.dataset.name;
+    };
+  });
+  loadAdminAdjDetails(); openModal('modal-paycheck-adjust');
+}
+
+function loadAdminAdjDetails() {
+  var el = document.getElementById('adj-details-list'); el.innerHTML = '<div class="loading"></div>';
+  gas('getAdminFamilyDetails', _adminAdjActId, _adminAdjFamId).then(function(details) {
+    if (!details.length) { el.innerHTML = '<div class="empty">尚無明細</div>'; return; }
+    var html = '<div class="tbl-wrap"><table><thead><tr><th>成員</th><th>設備</th><th>數量</th><th>單價</th><th>小計</th><th></th></tr></thead><tbody>';
+    details.forEach(function(d) {
+      var dispName = d.naturalName || d.memberName; 
+      html += '<tr><td>' + esc(dispName) + '</td><td>' + esc(d.equipName) + '</td><td>' + d.qty + '</td>' +
+        '<td style="color:' + (d.unitPrice < 0 ? 'var(--red)' : 'var(--forest-md)') + '">$' + d.unitPrice + '</td>' +
+        '<td style="color:' + (d.subtotal < 0 ? 'var(--red)' : 'var(--forest-md)') + '">$' + d.subtotal + '</td>' +
+        '<td><button class="btn btn-danger btn-xs" onclick="deleteAdjDetail(\'' + d.id + '\')">刪除</button></td></tr>';
+    });
+    html += '</tbody></table></div>'; el.innerHTML = html;
+  }).catch(function() { el.innerHTML = '<div class="empty">載入失敗</div>'; });
+}
+
+// 替換 3：刪除單筆調整明細
+function deleteAdjDetail(detailId) {
+  showCustomConfirm('確定刪除此明細？', function() {
+    gas('deletePayDetail', detailId).then(function() { 
+      toast('已刪除', 'success'); 
+      loadAdminAdjDetails(); 
+      if (document.getElementById('payreport-content') && document.getElementById('payreport-content').innerHTML !== '') loadPayReport();
+      if (document.getElementById('paycheck-list') && document.getElementById('paycheck-list').innerHTML !== '') loadPayCheck();
+    }).catch(function() { toast('刪除失敗', 'error'); });
+  });
+}
+
+function addAdjDetail() {
+  var memberId  = document.getElementById('adj-member-sel').value;
+  var equipId   = document.getElementById('adj-equip-sel').value || 'ADM';
+  var equipName = document.getElementById('adj-equip-name').value.trim();
+  var qty       = parseInt(document.getElementById('adj-qty').value, 10) || 1;
+  var unitPrice = parseInt(document.getElementById('adj-unit-price').value, 10);
+
+  if (!memberId) { toast('請選擇成員', 'warn'); return; }
+  if (!equipName) { toast('請填寫設備名稱', 'warn'); return; }
+  if (isNaN(unitPrice)) { toast('請輸入金額', 'warn'); return; }
+  if (_adminAdjBusy) return;
+  _adminAdjBusy = true;
+  var addBtn = document.getElementById('adj-add-btn'); addBtn.disabled = true; addBtn.textContent = '新增中...';
+
+  gas('addAdminDetail', _adminAdjActId, memberId, _adminAdjFamId, equipId, equipName, qty, unitPrice).then(function() {
+    toast('已新增明細', 'success'); document.getElementById('adj-equip-name').value = ''; document.getElementById('adj-qty').value = '1'; document.getElementById('adj-unit-price').value = '';
+    loadAdminAdjDetails();
+    if (document.getElementById('payreport-content').innerHTML !== '') loadPayReport();
+    if (document.getElementById('paycheck-list').innerHTML !== '') loadPayCheck();
+  }).catch(function() { toast('新增失敗', 'error'); }).finally(function() { _adminAdjBusy = false; addBtn.disabled = false; addBtn.textContent = '新增'; });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 4. 收費報表 (新增內部備註功能)
+// ─────────────────────────────────────────────────────────────────
+
+function getReportModeAndFilter() {
+  var mode = '家庭';
+  var posFilter = '';
+  var selects = document.querySelectorAll('select');
+  
+  for (var i = 0; i < selects.length; i++) {
+    var sel = selects[i];
+    if (sel.offsetParent === null) continue; 
+    if (sel.id === 'payreport-act') continue; 
+    
+    var text = '';
+    if (sel.selectedIndex >= 0) text = sel.options[sel.selectedIndex].text;
+    var val = sel.value || '';
+    
+    if (text.indexOf('個人') >= 0 || val.indexOf('個人') >= 0) {
+      mode = '個人';
+    } else if (text.indexOf('家庭') >= 0 || val.indexOf('家庭') >= 0) {
+      if (mode !== '個人') mode = '家庭';
+    } 
+    else if (val === '不限' || val === '全部' || text.indexOf('不限') >= 0 || text.indexOf('全部') >= 0) {
+      if (!posFilter) posFilter = ''; 
+    } 
+    else if (['小蟻', '小蜂', '小鹿', '小鷹', '家長', '戶長'].indexOf(val) >= 0) {
+      posFilter = val;
+    } 
+    else if (['小蟻', '小蜂', '小鹿', '小鷹', '家長', '戶長'].indexOf(text) >= 0) {
+      posFilter = text;
+    }
+  }
+  return { mode: mode, posFilter: posFilter };
+}
+
+function loadPayReport() {
+  var actId = document.getElementById('payreport-act').value;
+  var el    = document.getElementById('payreport-content');
+  if (!actId) { el.innerHTML = '<div class="empty">請先選擇活動</div>'; return; }
+  
+  var filters = getReportModeAndFilter();
+  el.innerHTML = '<div class="loading"></div>';
+
+  Promise.all([
+    gas('getPayReport', actId, filters.mode, filters.posFilter),
+    gas('getPayReport', actId, '家庭', filters.posFilter) 
+  ]).then(function(results) {
+    var rows = results[0];    
+    var famRows = results[1]; 
+
+    if (!rows || !rows.length) { el.innerHTML = '<div class="empty">此活動無相關收費明細</div>'; return; }
+    
+    // ★ 加入一個轉換千分位的小工具函式
+    function fmtMoney(num) {
+      return Number(num || 0).toLocaleString('en-US');
+    }
+
+    // ── 1. 計算統計數據 ──
+    var stats = {
+      '現金': { payable: 0, paid: 0, remaining: 0 },
+      'LinePay': { payable: 0, paid: 0, remaining: 0 },
+      'iPassMoney': { payable: 0, paid: 0, remaining: 0 },
+      '轉帳': { payable: 0, paid: 0, remaining: 0 },
+      '其他': { payable: 0, paid: 0, remaining: 0 },
+      '尚未回報': { payable: 0, paid: 0, remaining: 0 },
+      '全部': { payable: 0, paid: 0, remaining: 0 }
+    };
+
+    famRows.forEach(function(fr) {
+      var totalAmt = Number(fr.amount) || 0;
+      var activeRecs = fr.activeRecords || [];
+      var remainingToAllocate = totalAmt;
+
+      if (activeRecs.length === 0) {
+        stats['尚未回報'].payable += totalAmt;
+        stats['尚未回報'].remaining += totalAmt;
+      } else {
+        activeRecs.forEach(function(rec) {
+          var m = rec.method || '其他';
+          if (!stats[m]) m = '其他';
+          
+          var recAmt = Number(rec.amount) || 0;
+          var isPaid = (rec.status === '已確認');
+
+          var allocPayable = Math.min(recAmt, remainingToAllocate);
+          if (allocPayable < 0) allocPayable = 0; 
+
+          stats[m].payable += allocPayable;
+          stats[m].paid += (isPaid ? recAmt : 0);
+          stats[m].remaining += (allocPayable - (isPaid ? recAmt : 0));
+          
+          remainingToAllocate -= allocPayable;
+        });
+
+        if (remainingToAllocate > 0) {
+          stats['尚未回報'].payable += remainingToAllocate;
+          stats['尚未回報'].remaining += remainingToAllocate;
+        }
+      }
+
+      var frRemaining = Number(fr.remaining);
+      if (isNaN(frRemaining)) frRemaining = totalAmt - (Number(fr.paidTotal) || 0);
+      stats['全部'].payable += totalAmt;
+      stats['全部'].paid += (Number(fr.paidTotal) || 0);
+      stats['全部'].remaining += frRemaining;
+    });
+
+    // ── 2. 繪製統計表 (套用 fmtMoney) ──
+    var summaryHtml = '<div class="card" style="margin-bottom:16px; padding:16px;">' +
+      '<div style="font-size:22px; font-weight:bold; margin-bottom:12px; color:var(--forest-md);">📊 繳費方式統計</div>' +
+      '<div class="tbl-wrap"><table>' +
+      '<thead><tr><th>繳費方式</th><th>總應繳</th><th>總已繳</th><th>總未繳</th></tr></thead><tbody>';
+    
+    ['現金', 'LinePay', 'iPassMoney', '轉帳', '其他', '尚未回報'].forEach(function(m) {
+      if (m === '尚未回報' && stats[m].payable === 0 && stats[m].paid === 0 && stats[m].remaining === 0) return;
+      // 在每個顯示金額的地方加上 fmtMoney()
+      summaryHtml += '<tr><td>' + m + '</td><td>$' + fmtMoney(stats[m].payable) + '</td><td style="color:var(--forest-md)">$' + fmtMoney(stats[m].paid) + '</td><td style="color:var(--red)">$' + fmtMoney(stats[m].remaining) + '</td></tr>';
+    });
+
+    summaryHtml += '<tr style="font-weight:700; background:var(--mist); font-size:18px;">' +
+      '<td>全部總計</td><td>$' + fmtMoney(stats['全部'].payable) + '</td><td style="color:var(--forest-md)">$' + fmtMoney(stats['全部'].paid) + '</td><td style="color:var(--red)">$' + fmtMoney(stats['全部'].remaining) + '</td></tr>';
+    summaryHtml += '</tbody></table></div></div>';
+
+    // ── 3. 繪製明細表 (套用 fmtMoney) ──
+    var actualIndiv = (filters.mode === '個人') && (rows[0].memberName !== undefined);
+    var detailHtml = '<div class="tbl-wrap"><table><thead><tr>';
+    
+    if (actualIndiv) {
+      detailHtml += '<th>家庭編號</th><th>家庭名稱</th><th>成員(自然名)</th><th>設備/費用項目</th><th>數量</th><th>小計</th><th>家庭狀態</th><th>內部備註</th><th>操作</th>';
+    } else {
+      detailHtml += '<th>家庭編號</th><th>家庭名稱</th><th>應繳</th><th>已繳</th><th>未繳</th><th>狀態</th><th>方式</th><th>繳費日</th><th>回報備註</th><th>內部備註</th><th>操作</th>';
+    }
+    detailHtml += '</tr></thead><tbody>';
+    
+    rows.forEach(function(r) {
+      var sc = (r.status === '已完成' || r.status === '已結清') ? 'color:var(--forest-lt)' : (r.status === '未繳' ? 'color:var(--red)' : 'color:var(--amber)');
+      var adminNoteDisp = r.adminNote ? ('<span style="color:var(--forest-md);font-weight:500">' + esc(r.adminNote) + '</span>') : '';
+      
+      detailHtml += '<tr>';
+      if (actualIndiv) {
+        // 在顯示金額 r.amount 的地方加上 fmtMoney()
+        detailHtml += '<td>' + esc(r.familyNo || '') + '</td><td>' + esc(r.familyName) + '</td><td><strong style="color:var(--ink)">' + esc(r.memberName) + '</strong></td><td>' + esc(r.equipName) + '</td><td>' + r.qty + '</td><td>$' + fmtMoney(r.amount) + '</td><td style="' + sc + ';font-weight:700">' + esc(r.status) + '</td><td>' + adminNoteDisp + '</td>';
+      } else {
+        // 在顯示金額 r.amount, r.paidTotal, r.remaining 的地方加上 fmtMoney()
+        detailHtml += '<td>' + esc(r.familyNo || '') + '</td><td>' + esc(r.familyName) + '</td><td>$' + fmtMoney(r.amount) + '</td><td style="color:var(--forest-md)">$' + fmtMoney(r.paidTotal) + '</td><td style="color:var(--red)">$' + fmtMoney(r.remaining) + '</td><td style="' + sc + ';font-weight:700">' + esc(r.status) + '</td><td>' + esc(r.method) + '</td><td class="td-sm">' + esc(r.submitAt) + '</td><td class="td-sm">' + esc(r.note) + '</td><td>' + adminNoteDisp + '</td>';
+      }
+      
+      detailHtml += '<td><div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+        '<button class="btn btn-outline btn-xs" onclick="openAdminAdjust(\'' + actId + '\',\'' + r.familyId + '\',\'' + esc(r.familyName) + '\')">調整明細</button>' +
+        '<button class="btn btn-green btn-xs" onclick="openAdminNoteModal(\'' + actId + '\',\'' + r.familyId + '\',\'' + esc(r.familyName) + '\',\'' + esc(r.adminNote || '') + '\')">📝備註</button>' +
+        '</div></td></tr>';
+    });
+    detailHtml += '</tbody></table></div>'; 
+    el.innerHTML = summaryHtml + detailHtml;
+  }).catch(function(e) { console.error(e); el.innerHTML = '<div class="empty">載入失敗</div>'; });
+}
+
+function exportPayReport() {
+  var actId = document.getElementById('payreport-act').value;
+  if (!actId) { toast('請先選擇收費活動', 'warn'); return; }
+  var filters = getReportModeAndFilter();
+  toast('產生 Excel 中，請稍候...', 'success');
+  gas('getPayReport', actId, filters.mode, filters.posFilter).then(function(rows) {
+    if (!rows || !rows.length) { toast('沒有資料可匯出', 'warn'); return; }
+    var actSel  = document.getElementById('payreport-act'); 
+    var actName = actSel.options[actSel.selectedIndex].text;
+    var actualIndiv = (filters.mode === '個人') && (rows[0].memberName !== undefined);
+
+    // ★ Excel 匯出也加入了「內部對帳備註」欄位
+    var headers = actualIndiv 
+      ? ['家庭編號', '家庭名稱', '成員(自然名)', '設備/費用項目', '數量', '小計金額', '家庭繳費狀態', '內部對帳備註']
+      : ['家庭編號', '家庭名稱', '應繳金額', '已繳金額', '未繳金額', '繳費狀態', '繳費方式', '繳費日期', '確認日期', '回報備註', '內部對帳備註'];
+      
+    var data = [headers];
+    rows.forEach(function(r) { 
+      if (actualIndiv) {
+        data.push([r.familyNo||'', r.familyName||'', r.memberName||'', r.equipName||'', r.qty||0, r.amount||0, r.status||'', r.adminNote||'']);
+      } else {
+        data.push([r.familyNo||'', r.familyName||'', r.amount||0, r.paidTotal||0, r.remaining||0, r.status||'', r.method||'', r.submitAt||'', r.confirmAt||'', r.note||'', r.adminNote||'']); 
+      }
+    });
+    
+    var ws = XLSX.utils.aoa_to_sheet(data); var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '收費報表'); XLSX.writeFile(wb, actName + '_收費報表.xlsx');
+    toast('匯出成功！', 'success');
+  }).catch(function() { toast('匯出失敗', 'error'); });
+}
+
+// ── 新增：管理員內部備註相關函式 ──
+var _adminNoteBusy = false;
+function openAdminNoteModal(actId, familyId, familyName, currentNote) {
+  document.getElementById('anote-actid').value = actId;
+  document.getElementById('anote-famid').value = familyId;
+  document.getElementById('admin-note-title').textContent = '內部備註：' + familyName;
+  document.getElementById('anote-content').value = currentNote || '';
+  openModal('modal-admin-note');
+}
+
+function saveAdminNoteBtn() {
+  if (_adminNoteBusy) return;
+  var actId = document.getElementById('anote-actid').value;
+  var famId = document.getElementById('anote-famid').value;
+  var note = document.getElementById('anote-content').value.trim();
+  
+  var btn = document.getElementById('anote-save-btn');
+  _adminNoteBusy = true;
+  btn.disabled = true;
+  btn.textContent = '儲存中...';
+
+  gas('saveAdminNote', actId, famId, note).then(function() {
+    toast('備註已儲存', 'success');
+    closeModal('modal-admin-note');
+    loadPayReport(); // 存檔後自動重整報表畫面
+  }).catch(function(e) {
+    toast('儲存失敗', 'error');
+  }).finally(function() {
+    _adminNoteBusy = false;
+    btn.disabled = false;
+    btn.textContent = '儲存備註';
+  });
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// 5. type1：使用者選擇設備 Modal
+// ─────────────────────────────────────────────────────────────────
+
+var _type1ActId    = '';
+var _type1FamId    = '';
+var _type1MemberId = '';
+var _type1Equips   = [];
+var _type1SaveBusy = false;
+
+
+// ★ 注意函式多接收了一個 btnElement 參數
+function openType1Selection(actId, actName, familyId, memberId, btnElement) {
+  // 1. 紀錄按鈕原始文字，並將按鈕反灰改為「載入中」
+  var originalText = '';
+  if (btnElement) {
+    originalText = btnElement.textContent;
+    btnElement.disabled = true;
+    btnElement.textContent = '載入中...';
+  }
+
+  _type1ActId = actId; _type1FamId = familyId; _type1MemberId = memberId;
+  var memberLabel = '';
+  if (memberId) {
+    var m = S.members.filter(function(x){return x.id === memberId})[0];
+    if (m) memberLabel = m.naturalName || m.name; 
+  }
+  document.getElementById('type1sel-title').textContent = '選擇設備：' + actName + (memberLabel ? '（' + memberLabel + '）' : '');
+  var el = document.getElementById('type1sel-list'); el.innerHTML = '<div class="loading"></div>';
+  var btn = document.getElementById('type1sel-save-btn'); btn.disabled = false; btn.textContent = '儲存選擇'; _type1SaveBusy = false;
+
+  gas('getPayEquipsWithLimit', actId, memberId).then(function(equips) {
+    _type1Equips = equips.filter(function(e){ return e.category === '使用者'; });
+    if (!_type1Equips.length) { el.innerHTML = '<div class="empty">此活動尚未設定可選設備，請聯絡管理員</div>'; openModal('modal-type1-sel'); return; }
+    
+    var html = '';
+    _type1Equips.forEach(function(e) {
+      var remainText = '';
+      if (e.maxQty && e.maxQty > 0) {
+        var color = e.remainQty > 0 ? 'var(--forest-md)' : 'var(--red)';
+        remainText = '　<span style="color:' + color + '">剩餘 ' + e.remainQty + ' 個</span> / 共' + e.maxQty;
+      }
+      
+      var currentQty = e.myQty || 0;
+      var subtotal = currentQty * e.price;
+      
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:12px 0">' +
+        '<div><div style="font-weight:700;font-size:24px">' + esc(e.name) + '</div><div style="font-size:20px;color:var(--ink-soft)">單價 $' + e.price + remainText + '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<input id="type1qty-' + e.id + '" type="number" min="0" max="' + e.remainQty + '" value="' + currentQty + '" style="width:75px;text-align:center" oninput="updateType1Sub(\'' + e.id + '\',' + e.price + ')">' +
+          '<span style="font-size:22px;color:var(--forest-md);min-width:60px;text-align:right" id="type1sub-' + e.id + '">$' + subtotal + '</span>' +
+        '</div></div>';
+    });
+    el.innerHTML = html; openModal('modal-type1-sel');
+  }).catch(function() { 
+    el.innerHTML = '<div class="empty">載入失敗</div>'; openModal('modal-type1-sel'); 
+  }).finally(function() {
+    // 2. 當資料抓完（成功或失敗），把按鈕恢復原狀，讓使用者還可以再按
+    if (btnElement) {
+      btnElement.disabled = false;
+      btnElement.textContent = originalText;
+    }
+  });
+}
+
+function updateType1Sub(equipId, price) {
+  var input = document.getElementById('type1qty-' + equipId);
+  var q = parseInt(input.value, 10);
+  if (isNaN(q)) q = 0;
+  
+  // ★ 加入前端強制防呆：不允許輸入大於剩餘庫存的數量
+  var max = parseInt(input.max, 10);
+  if (q > max) {
+    q = max;
+    input.value = max;
+    toast('已達此項目剩餘庫存上限！', 'warn'); // 顯示警告
+  }
+  
+  var sub = document.getElementById('type1sub-' + equipId);
+  if (sub) sub.textContent = '$' + (q * price);
+}
+
+
+function saveType1Selection() {
+  if (_type1SaveBusy) return;
+  var btn = document.getElementById('type1sel-save-btn'); btn.disabled = true; btn.textContent = '儲存中...'; _type1SaveBusy = true;
+  var items = [];
+  _type1Equips.forEach(function(e) {
+    var q = parseInt((document.getElementById('type1qty-' + e.id) || {}).value, 10);
+    if (isNaN(q)) q = 0;
+    items.push({ equipId: e.id, equipName: e.name, qty: q, unitPrice: e.price });
+  });
+
+  gas('saveType1Selection', _type1ActId, _type1MemberId, _type1FamId, items).then(function() {
+    toast('選擇已儲存', 'success'); closeModal('modal-type1-sel'); loadPayItems(_type1FamId);
+  }).catch(function() { toast('儲存失敗', 'error'); }).finally(function() { _type1SaveBusy = false; btn.disabled = false; btn.textContent = '儲存選擇'; });
+}
+
+function populateType2SingleMembers() {
+  var sel = document.getElementById('type2-single-member-sel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">請選擇特定成員...</option>';
+  S.members.forEach(function(m) {
+    if (m.position !== '離團') {
+      var dispName = m.naturalName || m.name; 
+      sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + (m.familyNo ? ' ['+m.familyNo+']' : '') + '</option>';
+    }
+  });
+}
+
+// 替換 2：繳費頁面的管理員退款
+function adminDirectRefund(actId, familyId, amount) {
+  var msg = '確定已經將款項退給家長，並要紀錄退款 <strong>$' + Math.abs(amount) + '</strong> 嗎？<br><span style="color:var(--red);font-size:16px;">(這將會直接結清此退費項目)</span>';
+  
+  showCustomConfirm(msg, function() {
+    toast('處理中...', 'info');
+    gas('adminSubmitRefund', actId, familyId, amount, '管理員註記退款完成').then(function() {
+      toast('退款紀錄已完成！', 'success');
+      loadPayItems(familyId);
+    }).catch(function(e) {
+      toast('操作失敗', 'error');
+    });
+  });
+}
+
+// 替換 1：對帳區的管理員退款
+function adminDirectRefundFromCheck(actId, familyId, amount, cardId) {
+  var msg = '確定已經將款項退給家長，並要紀錄退款 <strong>$' + Math.abs(amount) + '</strong> 嗎？<br><span style="color:var(--red);font-size:16px;">(這將會直接結清此退費項目)</span>';
+  
+  showCustomConfirm(msg, function() {
+    toast('處理中...', 'info');
+    gas('adminSubmitRefund', actId, familyId, amount, '管理員對帳區註記退款').then(function() {
+      toast('退款紀錄已完成！', 'success');
+      var card = document.getElementById('pref-' + cardId);
+      if (card) card.remove();
+    }).catch(function(e) {
+      toast('操作失敗', 'error');
+    });
+  });
+}
+</script>

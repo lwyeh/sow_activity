@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+<title>荒野親子團報名系統</title>
+
+<?!= include('CSS_Main'); ?>
+
+</head>
+<body>
+
+<header class="site-header">
+  <div class="logo">
+    <span>荒野親子團報名系統</span>
+    <span class="logo-badge">荒野</span>
+  </div>
+  <nav class="header-nav">
+    <button class="nav-btn active" onclick="showPage('rsvp')">📅 報名活動</button>
+    <button class="nav-btn" onclick="showPage('pay')">💳 繳費</button>
+    <button class="nav-btn" onclick="showPage('view')">📊 報名狀態</button>
+    <button class="nav-btn" onclick="showPage('admin')">⚙️ 管理後台</button>
+  </nav>
+</header>
+
+<div class="page" id="page-pay">
+  <div class="pg-title">💳 繳費</div>
+  <div class="pg-sub">搜尋家庭，查看應繳項目並回報繳費</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">選擇家庭</div>
+    <input id="pay-family-search"
+           placeholder="輸入家庭名稱或編號搜尋…"
+           style="width:100%"
+           oninput="filterPayFamilies()">
+    <div id="pay-family-list" style="margin-top:12px;max-height:220px;overflow-y:auto"></div>
+  </div>
+
+  <div id="pay-items-section" style="display:none">
+    <div class="flex-between" style="margin-bottom:12px">
+      <div class="card-title" id="pay-family-title" style="margin:0;border:none;padding:0"></div>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('pay-items-section').style.display='none';document.getElementById('pay-family-search').value=''">換家庭</button>
+    </div>
+    <div id="pay-items-list"></div>
+  </div>
+</div>
+
+<div class="page active" id="page-rsvp">
+  <div class="pg-title">📅 報名活動</div>
+  <div class="pg-sub">選擇活動後，以家庭或小隊方式填寫出席狀況</div>
+  <div class="card">
+    <div class="card-title">選擇活動</div>
+    <div id="activity-list-rsvp"><div class="loading"></div></div>
+  </div>
+</div>
+
+<div class="page" id="page-view">
+  <div class="pg-title">📊 報名狀態</div>
+  <div class="pg-sub">唯讀檢視，無法新增或修改</div>
+  <div class="card">
+    <div class="flex-between" style="margin-bottom:14px">
+      <div class="form-group" style="margin:0;min-width:200px">
+        <label>選擇活動</label>
+        <select id="view-act-sel" onchange="loadViewRsvp()">
+          <option value="">- 請選擇活動 -</option>
+        </select>
+      </div>
+      <div class="seg-ctrl" id="view-mode-ctrl">
+        <button class="seg-btn active" onclick="setViewMode('family')">以家庭顯示</button>
+        <button class="seg-btn" onclick="setViewMode('troop')">以團別顯示</button>
+      </div>
+    </div>
+    <div id="view-content"><div class="empty">請先選擇活動</div></div>
+  </div>
+</div>
+
+<div class="page" id="page-admin">
+  <div id="admin-login" class="login-box">
+    <div class="card" style="max-width: 400px; margin: 0 auto;">
+      <div class="modal-title" style="font-size:24px; font-weight:bold; margin-bottom:10px;">管理後台</div>
+      <div class="pg-sub" style="margin-bottom:20px; color:var(--ink-soft);">請輸入管理員帳號與密碼</div>
+      
+      <div class="form-group" style="margin-bottom:15px;">
+        <label style="display:block; margin-bottom:5px;">帳號</label>
+        <input type="text" id="admin-user" placeholder="輸入帳號" style="width:100%; padding:8px; font-size:18px; border:1px solid #ccc; border-radius:4px;">
+      </div>
+      
+      <div class="form-group" style="margin-bottom:20px;">
+        <label style="display:block; margin-bottom:5px;">密碼</label>
+        <input type="password" id="admin-pwd" placeholder="輸入密碼" style="width:100%; padding:8px; font-size:18px; border:1px solid #ccc; border-radius:4px;" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      
+      <button class="btn btn-primary" id="admin-login-btn" style="width:100%; font-size:18px; padding:10px;" onclick="doLogin()">登入</button>
+    </div>
+  </div>
+
+  <div id="admin-body" style="display:none">
+    <div class="flex-between" style="margin-bottom:20px">
+      <div>
+        <div class="pg-title" style="margin-bottom:0">管理後台</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="openUpgradeModal()">🔄 年度升級</button>
+        <button class="btn btn-outline btn-sm" onclick="doLogout()">登出</button>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab active" onclick="showAdminTab('members')" id="atab-members">🧑 成員管理</button>
+      <button class="tab" onclick="showAdminTab('families')" id="atab-families">🏠 家庭管理</button>
+      <button class="tab" onclick="showAdminTab('activities')" id="atab-activities">🌿 活動管理</button>
+      <button class="tab" onclick="showAdminTab('roster')" id="atab-roster">📋 名冊條列</button>
+      <button class="tab" onclick="showAdminTab('payacts')" id="atab-payacts">📋 收費活動</button>
+      <button class="tab" onclick="showAdminTab('paycheck')" id="atab-paycheck">✅ 對帳管理</button>
+      <button class="tab" onclick="showAdminTab('payreport')" id="atab-payreport">📊 收費報表</button>
+    </div>
+
+    <div id="aTab-members">
+      <div class="flex-between" style="margin-bottom:14px">
+        <div class="filter-bar" style="margin:0;flex:1">
+          <select id="filter-troop" onchange="filterMembers()"><option value="">所有團別</option></select>
+          <select id="filter-squad" onchange="filterMembers()"><option value="">所有小隊</option></select>
+          <select id="filter-family" onchange="filterMembers()"><option value="">所有家庭</option></select>
+          <input id="filter-name" placeholder="搜尋自然名…" style="width:auto;flex:1;min-width:100px" oninput="filterMembers()">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openMemberModal()" style="flex-shrink:0">+ 新增成員</button>
+        <button class="btn btn-outline btn-sm" onclick="openImportModal()" style="flex-shrink:0">📥 匯入Excel</button>
+      </div>
+      <div id="members-list"><div class="loading"></div></div>
+    </div>
+
+    <div id="aTab-families" style="display:none">
+      <div class="flex-between" style="margin-bottom:14px">
+        <span style="font-size:26px;color:var(--ink-soft)" id="family-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="openFamilyModal()">+ 新增家庭</button>
+      </div>
+      <div id="families-list"><div class="loading"></div></div>
+    </div>
+
+    <div id="aTab-activities" style="display:none">
+      <div class="flex-between" style="margin-bottom:14px">
+        <span></span>
+        <button class="btn btn-primary btn-sm" onclick="openActivityModal()">+ 新增活動</button>
+      </div>
+      <div id="activities-admin-list"></div>
+
+      <div id="act-stats-section" style="display:none;margin-top:24px">
+        <div class="card-title" style="border-bottom:2px solid var(--forest-lt);padding-bottom:10px;margin-bottom:16px;font-family:'Georgia','Times New Roman',serif;font-size:22px;font-weight:700">
+          報名統計
+        </div>
+        <div class="flex-between" style="margin-bottom:14px">
+          <select id="stats-act-sel" onchange="loadStats()">
+            <option value="">- 選擇活動 -</option>
+          </select>
+          <div class="seg-ctrl">
+            <button class="seg-btn active" onclick="setStatsMode('family')">家庭</button>
+            <button class="seg-btn" onclick="setStatsMode('troop')">團別</button>
+            <button class="seg-btn" onclick="setStatsMode('squad')">小隊</button>
+          </div>
+        </div>
+        <div id="stats-content"></div>
+      </div>
+    </div>
+
+    <div id="aTab-payacts" style="display:none">
+      <div class="flex-between" style="margin-bottom:16px">
+        <div></div>
+		<button class="btn btn-green btn-sm" onclick="openNewPayActModal()">＋ 新增收費活動</button>
+      </div>
+      <div id="payacts-list"><div class="empty">載入中...</div></div>
+    </div>
+
+    <div id="aTab-paycheck" style="display:none">
+      <div class="filter-bar" style="margin-bottom:16px">
+        <select id="paycheck-filter-act" onchange="loadPayCheck()">
+          <option value="">所有活動</option>
+        </select>
+      </div>
+      <div id="paycheck-list"><div class="empty">載入中...</div></div>
+    </div>
+
+    <div id="aTab-payreport" style="display:none">
+      <div class="filter-bar" style="margin-bottom:16px">
+        <select id="payreport-act">
+          <option value="">請選擇收費活動</option>
+        </select>
+        <select id="payreport-group">
+          <option value="family">以家庭為單位</option>
+          <option value="member">以個人為單位</option>
+        </select>
+        <select id="payreport-pos">
+          <option value="">不限</option>
+          <option value="小蟻">小蟻</option>
+          <option value="小蜂">小蜂</option>
+          <option value="小鹿">小鹿</option>
+        </select>
+        <button class="btn btn-green btn-sm" onclick="loadPayReport()">查詢</button>
+        <button class="btn btn-outline btn-sm" onclick="exportPayReport()">下載 Excel</button>
+      </div>
+      <div id="payreport-content"><div class="empty">請選擇收費活動</div></div>
+    </div>
+
+    <div id="aTab-roster" style="display:none">
+      <div class="filter-bar" style="margin-bottom:16px">
+        <select id="roster-troop" onchange="loadRoster()"><option value="">選擇團別</option></select>
+        <select id="roster-squad" onchange="loadRoster()"><option value="">選擇小隊</option></select>
+      </div>
+      <div id="roster-content"><div class="empty">請選擇團別或小隊</div></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<?!= include('Modals'); ?>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<?!= include('JS_Main'); ?>
+<?!= include('JS_RSVP'); ?>
+<?!= include('JS_Payment'); ?>
+<?!= include('JS_Admin'); ?>
+
+</body>
+</html>

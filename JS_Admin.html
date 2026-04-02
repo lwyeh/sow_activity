@@ -1,0 +1,611 @@
+<script>
+// ================================================================
+//  JS_Admin.html - 管理後台邏輯 (成員、家庭、活動、匯入、升級)
+// ================================================================
+
+function doLogin() {
+  var user = document.getElementById('admin-user').value.trim();
+  var pass = document.getElementById('admin-pwd').value.trim();
+  
+  if (!user || !pass) { 
+    toast('請輸入完整的帳號與密碼！', 'warn'); 
+    return; 
+  }
+
+  var btn = document.getElementById('admin-login-btn');
+  if (btn) {
+    btn.disabled = true; 
+    btn.textContent = '身分驗證中...';
+  }
+
+  // 呼叫後端的 verifyAdminLogin API (已在前一個步驟加進 Api_Payment.gs)
+  gas('verifyAdminLogin', user, pass).then(function(res) {
+    if (res.success) {
+      toast('登入成功！', 'success');
+      
+      // 隱藏登入框，顯示後台主畫面
+      document.getElementById('admin-login').style.display = 'none';
+      document.getElementById('admin-body').style.display = 'block';
+      
+      S.adminAuth = true; 
+      document.getElementById('admin-pwd').value = ''; // 安全起見清空密碼
+      
+      // (選擇性) 如果您剛才有採用「方案A」，這裡可以順便觸發預載
+      if (typeof loadPayActs === 'function') loadPayActs();
+      
+    } else {
+      toast(res.msg || '登入失敗，請檢查帳號密碼', 'error');
+    }
+  }).catch(function(e) {
+    console.error(e);
+    toast('系統連線錯誤', 'error');
+  }).finally(function() {
+    if (btn) {
+      btn.disabled = false; 
+      btn.textContent = '登入';
+    }
+  });
+}
+
+function doLogout() {
+  S.adminAuth = false;
+  document.getElementById('admin-login').style.display = 'block';
+  document.getElementById('admin-body').style.display  = 'none';
+  document.getElementById('admin-pwd').value = '';
+}
+
+function showAdminTab(name) {
+  ['members','families','activities','roster','payacts','paycheck','payreport'].forEach(function(t) {
+    var el = document.getElementById('aTab-' + t);
+    if(el) el.style.display = t === name ? 'block' : 'none';
+    var btn = document.getElementById('atab-' + t);
+    if(btn) btn.classList.toggle('active', t === name);
+  });
+  if (name === 'activities') document.getElementById('act-stats-section').style.display = 'block';
+  if (name === 'roster' && typeof loadRoster === 'function') loadRoster();
+  if (name === 'payacts' && typeof loadPayActs === 'function') loadPayActs();
+  if (name === 'paycheck' && typeof loadPayCheck === 'function') loadPayCheck();
+}
+
+function loadAdminData() {
+  return loadAllData().then(function() {
+    renderMembersList();
+    renderFamiliesList();
+    renderActivitiesAdminList();
+    populateFamilySelects();
+    populateFilterFamilySelect();
+  });
+}
+
+function populateFamilySelects() {
+  var selIds = ['mem-family', 'filter-family'];
+  selIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var emptyLabel = id === 'filter-family' ? '所有家庭' : '- 選擇家庭 -';
+    el.innerHTML = '<option value="">' + emptyLabel + '</option>';
+    S.families.forEach(function(f){ el.innerHTML += '<option value="' + f.id + '">' + f.name + '</option>'; });
+  });
+}
+
+function populateFilterFamilySelect() {
+  var el = document.getElementById('filter-family');
+  if (!el) return;
+  el.innerHTML = '<option value="">所有家庭</option>';
+  S.families.forEach(function(f){ el.innerHTML += '<option value="' + f.id + '">' + f.name + '</option>'; });
+}
+
+// ── 成員管理 ──────────────────────────────────────────────────────
+
+function filterMembers() {
+  var troop  = document.getElementById('filter-troop').value;
+  var squad  = document.getElementById('filter-squad').value;
+  var famId  = document.getElementById('filter-family').value;
+  var name   = document.getElementById('filter-name').value.toLowerCase();
+
+  var filtered = S.members.filter(function(m) {
+    if (troop && m.troop !== troop) return false;
+    if (squad && m.squad !== squad) return false;
+    if (famId && String(m.familyId) !== String(famId)) return false;
+    if (name  && (m.naturalName||'').toLowerCase().indexOf(name) < 0 && m.name.toLowerCase().indexOf(name) < 0) return false;
+    return true;
+  });
+  renderMembersList(filtered);
+}
+
+function renderMembersList(list) {
+  var members = list || S.members;
+  var el = document.getElementById('members-list');
+  var headerTab = document.getElementById('atab-members');
+  if(headerTab) headerTab.textContent = '🧑 成員管理';
+  
+  if (!members.length) { el.innerHTML = '<div class="empty">無成員資料</div>'; return; }
+  el.innerHTML = members.map(function(m) {
+    return '<div class="mem-card">' +
+      '<div class="mem-card-info" style="flex:1">' +
+        '<div class="mname">' + esc(m.name) + (m.naturalName ? ' <span style="font-size:24px;color:var(--ink-soft)">(' + esc(m.naturalName) + ')</span>' : '') + '</div>' +
+        '<div class="mmeta">' +
+          '<span class="tag">🏠 ' + esc(m.familyName || m.familyId) + '</span>' +
+          '<span class="tag">' + (m.role || '') + '</span>' +
+          (m.troop ? '<span class="tag">' + m.troop + '</span>' : '') +
+          (m.grade ? '<span class="tag">' + m.grade + '</span>' : '') +
+          (m.squad && m.squad !== '無' ? '<span class="tag">' + m.squad + '</span>' : '') +
+          (m.position ? '<span class="tag">' + m.position + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="btn btn-outline btn-xs" data-mid="' + m.id + '" onclick="editMemberById(this.getAttribute(\'data-mid\'))">編輯</button>' +
+        '<button class="btn btn-danger btn-xs" data-mid="' + m.id + '" onclick="deleteMemberById(this.getAttribute(\'data-mid\'))">刪除</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function quickAddFamily() {
+  var form = document.getElementById('quick-family-form');
+  var nameEl = document.getElementById('quick-family-name');
+  form.style.display = 'block';
+  nameEl.value = '';
+  nameEl.focus();
+}
+
+function cancelQuickFamily() {
+  document.getElementById('quick-family-form').style.display = 'none';
+  document.getElementById('quick-family-name').value = '';
+}
+
+function confirmQuickFamily() {
+  var name = document.getElementById('quick-family-name').value.trim();
+  if (!name) { toast('請輸入家庭名稱', 'warn'); return; }
+
+  gas('saveFamily', { id: null, name: name }).then(function(res) {
+    toast('家庭「' + name + '」已建立', 'success');
+    cancelQuickFamily();
+    return loadAllData().then(function() {
+      var famSel = document.getElementById('mem-family');
+      famSel.innerHTML = '<option value="">- 選擇家庭 -</option>';
+      S.families.forEach(function(f){ famSel.innerHTML += '<option value="' + f.id + '">' + esc(f.name) + '</option>'; });
+      famSel.value = res.id;
+    });
+  }).catch(function() { toast('建立失敗', 'error'); });
+}
+
+function openMemberModal() {
+  document.getElementById('modal-member-title').textContent = '新增成員';
+  ['mem-id','mem-name','mem-natural','mem-phone','mem-email'].forEach(function(id){ document.getElementById(id).value = ''; });
+  ['mem-family','mem-gender','mem-troop','mem-grade','mem-position','mem-squad'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.selectedIndex = 0;
+  });
+  document.getElementById('mem-role').value = '家長';
+  openModal('modal-member');
+}
+
+function editMemberById(mid) {
+  var m = findById(S.members, mid);
+  if (!m) { toast('找不到成員', 'error'); return; }
+  document.getElementById('modal-member-title').textContent = '編輯成員';
+  document.getElementById('mem-id').value      = m.id;
+  document.getElementById('mem-name').value    = m.name;
+  document.getElementById('mem-natural').value = m.naturalName || '';
+  document.getElementById('mem-phone').value   = m.phone || '';
+  document.getElementById('mem-email').value   = m.email || '';
+  document.getElementById('mem-role').value    = m.role  || '家長';
+  setSelectValue('mem-family',   m.familyId);
+  setSelectValue('mem-gender',   m.gender);
+  setSelectValue('mem-troop',    m.troop);
+  setSelectValue('mem-grade',    m.grade);
+  setSelectValue('mem-position', m.position);
+  setSelectValue('mem-squad',    m.squad);
+  openModal('modal-member');
+}
+
+function saveMember() {
+  var name = document.getElementById('mem-name').value.trim();
+  var fid  = document.getElementById('mem-family').value;
+  if (!name) { toast('請填寫姓名', 'error'); return; }
+  if (!fid)  { toast('請選擇家庭', 'error'); return; }
+  var fam = findById(S.families, fid);
+
+  var data = {
+    id:          document.getElementById('mem-id').value.trim() || null,
+    familyId:    fid,
+    familyName:  fam ? fam.name : '',
+    name:        name,
+    naturalName: document.getElementById('mem-natural').value,
+    gender:      document.getElementById('mem-gender').value,
+    role:        document.getElementById('mem-role').value,
+    phone:       document.getElementById('mem-phone').value,
+    email:       document.getElementById('mem-email').value,
+    troop:       document.getElementById('mem-troop').value,
+    grade:       document.getElementById('mem-grade').value,
+    position:    document.getElementById('mem-position').value,
+    squad:       document.getElementById('mem-squad').value
+  };
+
+  gas('saveMember', data).then(function() {
+    toast('儲存成功', 'success');
+    closeModal('modal-member');
+    loadAdminData();
+  }).catch(function(e){ toast('儲存失敗', 'error'); });
+}
+
+function deleteMemberById(mid) {
+  var m = findById(S.members, mid);
+  if (!confirm('確定要刪除成員[' + (m ? m.name : mid) + ']？')) return;
+  gas('deleteMember', mid).then(function() {
+    toast('已刪除', 'success');
+    loadAdminData();
+  }).catch(function(){ toast('刪除失敗', 'error'); });
+}
+
+// ── 家庭管理 ──────────────────────────────────────────────────────
+
+function renderFamiliesList() {
+  var el = document.getElementById('families-list');
+  document.getElementById('family-count').textContent = '共 ' + S.families.length + ' 個家庭';
+  if (!S.families.length) { el.innerHTML = '<div class="empty">尚無家庭</div>'; return; }
+
+  el.innerHTML = S.families.map(function(f) {
+    var fMembers = S.members.filter(function(m){ return String(m.familyId) === String(f.id); });
+    return '<div class="mem-card">' +
+      '<div style="flex:1">' +
+        '<div style="font-weight:700;margin-bottom:6px">' + (f.no ? '['+f.no+'] ' : '') + esc(f.name) + '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:5px">' +
+          fMembers.map(function(m){ return '<span class="tag">' + esc(m.name) + ' (' + (m.role||'') + ')</span>'; }).join('') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0">' +
+        '<button class="btn btn-outline btn-xs" data-fid="' + f.id + '" onclick="editFamilyById(this.getAttribute(\'data-fid\'))">編輯</button>' +
+        '<button class="btn btn-danger btn-xs" data-fid="' + f.id + '" onclick="deleteFamilyById(this.getAttribute(\'data-fid\'))">刪除</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function openFamilyModal() {
+  document.getElementById('modal-family-title').textContent = '新增家庭';
+  document.getElementById('fam-id').value   = '';
+  document.getElementById('fam-name').value = '';
+  openModal('modal-family');
+}
+
+function editFamilyById(fid) {
+  var f = findById(S.families, fid);
+  if (!f) return;
+  document.getElementById('modal-family-title').textContent = '編輯家庭';
+  document.getElementById('fam-id').value   = f.id;
+  document.getElementById('fam-name').value = f.name;
+  openModal('modal-family');
+}
+
+function saveFamily() {
+  var name = document.getElementById('fam-name').value.trim();
+  if (!name) { toast('請填寫家庭名稱', 'error'); return; }
+  var data = { id: document.getElementById('fam-id').value.trim() || null, name: name };
+  gas('saveFamily', data).then(function() {
+    toast('儲存成功', 'success');
+    closeModal('modal-family');
+    loadAdminData();
+  }).catch(function(){ toast('儲存失敗', 'error'); });
+}
+
+function deleteFamilyById(fid) {
+  var f = findById(S.families, fid);
+  if (!confirm('確定要刪除家庭[' + (f ? f.name : fid) + ']？')) return;
+  gas('deleteFamily', fid).then(function() {
+    toast('已刪除', 'success');
+    loadAdminData();
+  }).catch(function(){ toast('刪除失敗', 'error'); });
+}
+
+// ── 活動管理 ──────────────────────────────────────────────────────
+
+function renderActivitiesAdminList() {
+  var el = document.getElementById('activities-admin-list');
+  if (!S.activities.length) { el.innerHTML = '<div class="empty">尚無活動</div>'; return; }
+  el.innerHTML = S.activities.map(function(a) {
+    return '<div class="act-card" style="cursor:default">' +
+      '<div style="flex:1">' +
+        '<div class="act-name">' + esc(a.name) + '</div>' +
+        '<div class="act-meta">' +
+          (a.startDate ? '<span>開始 ' + a.startDate + '</span>' : '') +
+          (a.endDate   ? '<span>結束 ' + a.endDate   + '</span>' : '') +
+          (a.deadline  ? '<span>截止報名 ' + a.deadline + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">' +
+        '<span class="badge ' + (a.isOpen ? 'badge-open' : 'badge-closed') + '">' + a.status + '</span>' +
+        '<div style="display:flex;gap:6px">' +
+          '<button class="btn btn-outline btn-xs" data-aid="' + a.id + '" onclick="editActivityById(this.getAttribute(\'data-aid\'))">編輯</button>' +
+          '<button class="btn btn-danger btn-xs" data-aid="' + a.id + '" onclick="deleteActivityById(this.getAttribute(\'data-aid\'))">刪除</button>' +
+        '</div>' +
+        '<button class="btn btn-xs" style="background:var(--mist);color:var(--forest-md)" data-aid="' + a.id + '" onclick="quickLoadStats(this.getAttribute(\'data-aid\'))">查看報名</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  var saEl = document.getElementById('stats-act-sel');
+  saEl.innerHTML = '<option value="">- 選擇活動 -</option>';
+  S.activities.forEach(function(a){ saEl.innerHTML += '<option value="' + a.id + '">' + a.name + '</option>'; });
+}
+
+function openActivityModal() {
+  document.getElementById('modal-activity-title').textContent = '新增活動';
+  document.getElementById('act-id').value       = '';
+  document.getElementById('act-name').value     = '';
+  document.getElementById('act-start').value    = '';
+  document.getElementById('act-end').value      = '';
+  document.getElementById('act-deadline').value = '';
+  document.getElementById('act-status').value   = '開放報名';
+  openModal('modal-activity');
+}
+
+function editActivityById(aid) {
+  var a = findById(S.activities, aid);
+  if (!a) return;
+  document.getElementById('modal-activity-title').textContent = '編輯活動';
+  document.getElementById('act-id').value       = a.id;
+  document.getElementById('act-name').value     = a.name;
+  document.getElementById('act-start').value    = a.startDate ? a.startDate.split('/').join('-') : '';
+  document.getElementById('act-end').value      = a.endDate   ? a.endDate.split('/').join('-') : '';
+  document.getElementById('act-deadline').value = a.deadline  ? a.deadline.split('/').join('-') : '';
+  document.getElementById('act-status').value   = a.status;
+  openModal('modal-activity');
+}
+
+function saveActivity() {
+  var name = document.getElementById('act-name').value.trim();
+  if (!name) { toast('請填寫活動名稱', 'error'); return; }
+  var data = {
+    id:        document.getElementById('act-id').value.trim() || null,
+    name:      name,
+    startDate: document.getElementById('act-start').value,
+    endDate:   document.getElementById('act-end').value,
+    deadline:  document.getElementById('act-deadline').value,
+    status:    document.getElementById('act-status').value
+  };
+  gas('saveActivity', data).then(function() {
+    toast('儲存成功', 'success');
+    closeModal('modal-activity');
+    loadAdminData();
+    if(typeof renderActivityListRsvp === 'function') renderActivityListRsvp();
+  }).catch(function(){ toast('儲存失敗', 'error'); });
+}
+
+function deleteActivityById(aid) {
+  var a = findById(S.activities, aid);
+  if (!confirm('確定要刪除活動[' + (a ? a.name : aid) + ']？將同步刪除報名資料！')) return;
+  gas('deleteActivity', aid).then(function() {
+    toast('已刪除', 'success');
+    loadAdminData();
+    if(typeof renderActivityListRsvp === 'function') renderActivityListRsvp();
+  }).catch(function(){ toast('刪除失敗', 'error'); });
+}
+
+function quickLoadStats(aid) {
+  setSelectValue('stats-act-sel', aid);
+  if(typeof loadStats === 'function') loadStats();
+  document.getElementById('act-stats-section').scrollIntoView({ behavior:'smooth' });
+}
+
+// ── 名冊與升級 ────────────────────────────────────────────────────
+
+function loadRoster() {
+  var troop = document.getElementById('roster-troop').value;
+  var squad = document.getElementById('roster-squad').value;
+  var el    = document.getElementById('roster-content');
+  if (!troop && !squad) { el.innerHTML = '<div class="empty">請選擇團別或小隊</div>'; return; }
+
+  var filtered = S.members.filter(function(m) {
+    if (m.position === '離團') return false;
+    if (troop && m.troop !== troop) return false;
+    if (squad && m.squad !== squad) return false;
+    return true;
+  });
+
+  if (!filtered.length) { el.innerHTML = '<div class="empty">查無成員</div>'; return; }
+
+  el.innerHTML = '<div style="margin-bottom:12px;font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>' +
+    '<div class="tbl-wrap"><table><thead><tr>' +
+    '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th><th>性別</th><th>團別</th><th>小隊</th><th>年級</th><th>職位</th>' +
+    '</tr></thead><tbody>' +
+    filtered.map(function(m) {
+      return '<tr>' +
+        '<td><strong>' + esc(m.name) + '</strong></td>' +
+        '<td>' + esc(m.naturalName||'') + '</td>' +
+        '<td>' + esc(m.familyName||'') + '</td>' +
+        '<td>' + esc(m.role||'') + '</td>' +
+        '<td>' + esc(m.gender||'') + '</td>' +
+        '<td>' + esc(m.troop||'') + '</td>' +
+        '<td>' + esc(m.squad||'') + '</td>' +
+        '<td>' + esc(m.grade||'') + '</td>' +
+        '<td>' + esc(m.position||'') + '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table></div>';
+}
+
+function openUpgradeModal() {
+  document.getElementById('upgrade-list').innerHTML = '<div class="loading"></div>';
+  document.getElementById('upgrade-confirm-btn').disabled = false;
+  document.getElementById('upgrade-confirm-btn').textContent = '確認升級';
+  openModal('modal-upgrade');
+  
+  gas('getUpgradePreview').then(function(list) {
+    if (!list.length) {
+      document.getElementById('upgrade-list').innerHTML = '<div class="empty">沒有符合升級條件的成員</div>';
+      document.getElementById('upgrade-confirm-btn').disabled = true;
+      return;
+    }
+    var html = '<table style="width:100%;font-size:24px;text-align:left;border-collapse:collapse">' +
+      '<tr style="background:var(--mist)"><th style="padding:8px">姓名 (自然名)</th><th style="padding:8px">年級異動</th><th style="padding:8px">職位異動</th></tr>';
+    list.forEach(function(m) {
+      html += '<tr style="border-bottom:1px solid var(--line)">' +
+        '<td style="padding:8px"><strong>' + esc(m.name) + '</strong> (' + esc(m.naturalName) + ')</td>' +
+        '<td style="padding:8px">' + esc(m.oldGrade) + ' <span style="color:var(--forest-lt)">→ ' + esc(m.newGrade) + '</span></td>' +
+        '<td style="padding:8px">' + esc(m.oldPosition) + ' <span style="color:var(--forest-lt)">→ ' + esc(m.newPosition) + '</span></td>' +
+      '</tr>';
+    });
+    html += '</table><p style="margin-top:12px;color:var(--ink-soft)">共 ' + list.length + ' 位成員</p>';
+    document.getElementById('upgrade-list').innerHTML = html;
+  }).catch(function(){ document.getElementById('upgrade-list').innerHTML = '<div class="empty">載入失敗</div>'; });
+}
+
+function confirmUpgrade() {
+  var btn = document.getElementById('upgrade-confirm-btn');
+  btn.disabled = true; btn.textContent = '升級中...';
+  gas('executeUpgrade').then(function(res) {
+    toast('年度升級完成，共更新 ' + res.count + ' 位成員', 'success');
+    closeModal('modal-upgrade');
+    loadAdminData();
+  }).catch(function() {
+    btn.disabled = false; btn.textContent = '確認升級';
+    toast('升級失敗', 'error');
+  });
+}
+
+// ── Excel 匯入功能 ────────────────────────────────────────────────
+
+var importData = [];
+
+function openImportModal() {
+  document.getElementById('import-step-upload').style.display = 'block';
+  document.getElementById('import-step-preview').style.display = 'none';
+  document.getElementById('import-step-progress').style.display = 'none';
+  document.getElementById('import-step-done').style.display = 'none';
+  document.getElementById('import-parse-status').textContent = '';
+  importData = [];
+  openModal('modal-import');
+}
+
+function resetImport() { openImportModal(); }
+function closeImportModal() { closeModal('modal-import'); }
+
+function handleImportDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.background = 'var(--cream)';
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) handleImportFile(e.dataTransfer.files[0]);
+}
+
+function handleImportFile(file) {
+  if (!file) return;
+  var statusEl = document.getElementById('import-parse-status');
+  statusEl.textContent = '讀取檔案中...';
+  
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var workbook = XLSX.read(data, {type: 'array'});
+      var sheetName = workbook.SheetNames[0];
+      var worksheet = workbook.Sheets[sheetName];
+      var json = XLSX.utils.sheet_to_json(worksheet, {header: 1}); 
+      parseImportData(json);
+    } catch(err) {
+      statusEl.innerHTML = '<span style="color:var(--red)">檔案解析失敗，請確認是否為有效的 Excel 檔。</span>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseImportData(rows) {
+  if (!rows || rows.length < 2) {
+    document.getElementById('import-parse-status').innerHTML = '<span style="color:var(--red)">檔案內容為空或格式錯誤</span>';
+    return;
+  }
+  
+  var headers = rows[0].map(function(h){ return String(h||'').trim(); });
+  var colMap = {};
+  ['家庭名稱', '姓名', '自然名', '角色', '性別', '電話', 'Email', '團別', '年級', '職位', '隊名'].forEach(function(k) {
+    var idx = headers.indexOf(k);
+    if (idx >= 0) colMap[k] = idx;
+  });
+
+  if (!('家庭名稱' in colMap) || !('姓名' in colMap) || !('角色' in colMap)) {
+    document.getElementById('import-parse-status').innerHTML = '<span style="color:var(--red)">缺少必填欄位：家庭名稱、姓名、角色</span>';
+    return;
+  }
+
+  importData = [];
+  var errs = [];
+  
+  for (var i = 2; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r || !r.length || !r[colMap['姓名']]) continue;
+    
+    var item = { rowNum: i + 1 };
+    Object.keys(colMap).forEach(function(k) { item[k] = r[colMap[k]] !== undefined ? String(r[colMap[k]]).trim() : ''; });
+    
+    var stat = 'OK';
+    if (!item['家庭名稱']) { stat = '缺家庭'; errs.push('第 ' + item.rowNum + ' 列：缺少家庭名稱'); }
+    else if (!item['角色']) { stat = '缺角色'; errs.push('第 ' + item.rowNum + ' 列：缺少角色'); }
+    item.status = stat;
+    importData.push(item);
+  }
+
+  if (errs.length > 0) {
+    var errEl = document.getElementById('import-error-list');
+    errEl.style.display = 'block';
+    errEl.innerHTML = '<strong>發現錯誤：</strong><br>' + errs.slice(0,5).join('<br>') + (errs.length>5 ? '<br>...等共 '+errs.length+' 個錯誤' : '');
+    document.getElementById('import-confirm-btn').disabled = true;
+  } else {
+    document.getElementById('import-error-list').style.display = 'none';
+    document.getElementById('import-confirm-btn').disabled = false;
+  }
+
+  document.getElementById('import-summary').innerHTML = '<span class="badge badge-troop">共讀取 ' + importData.length + ' 筆</span>' +
+    (errs.length ? '<span class="badge" style="background:#fce8e6;color:var(--red)">' + errs.length + ' 筆錯誤</span>' : '<span class="badge badge-attend">格式檢查通過</span>');
+
+  var tbody = document.getElementById('import-preview-body');
+  tbody.innerHTML = importData.slice(0, 50).map(function(d, idx) {
+    var stClr = d.status === 'OK' ? 'color:var(--forest)' : 'color:var(--red);font-weight:700';
+    return '<tr><td class="td-sm">' + (idx + 1) + '</td><td>' + esc(d['家庭名稱']) + '</td><td>' + esc(d['姓名']) + '</td><td>' + esc(d['自然名']) + '</td><td>' + esc(d['角色']) + '</td><td>' + esc(d['性別']) + '</td><td>' + esc(d['團別']) + '</td><td>' + esc(d['年級']) + '</td><td>' + esc(d['職位']) + '</td><td>' + esc(d['隊名']) + '</td><td style="' + stClr + '">' + d.status + '</td></tr>';
+  }).join('');
+
+  document.getElementById('import-step-upload').style.display = 'none';
+  document.getElementById('import-step-preview').style.display = 'block';
+}
+
+function confirmImport() {
+  if (!importData.length) return;
+  document.getElementById('import-step-preview').style.display = 'none';
+  document.getElementById('import-step-progress').style.display = 'block';
+  
+  var total = importData.length, current = 0, successCount = 0;
+  var progBar = document.getElementById('import-progress-bar'), progText = document.getElementById('import-progress-text');
+  var famMap = {}; S.families.forEach(function(f){ famMap[f.name] = f.id; });
+
+  function processNextBatch() {
+    var batch = importData.slice(current, current + 10);
+    if (!batch.length) { 
+      document.getElementById('import-step-progress').style.display = 'none';
+      document.getElementById('import-step-done').style.display = 'block';
+      document.getElementById('import-done-msg').textContent = '匯入完成！';
+      document.getElementById('import-done-sub').textContent = '成功新增了 ' + successCount + ' 筆資料。';
+      loadAdminData(); return; 
+    }
+
+    var promises = batch.map(function(d) {
+      return new Promise(function(resolve) {
+        var fname = d['家庭名稱'];
+        var checkFam = Promise.resolve(famMap[fname]);
+        if (!famMap[fname]) checkFam = gas('saveFamily', { name: fname }).then(function(res){ famMap[fname] = res.id; return res.id; });
+        
+        checkFam.then(function(fid) {
+          return gas('saveMember', { familyId: fid, name: d['姓名'], naturalName: d['自然名'], role: d['角色'], gender: d['性別'], phone: d['電話'], email: d['Email'], troop: d['團別'], grade: d['年級'], position: d['職位'], squad: d['隊名'] });
+        }).then(function(){ successCount++; resolve(); }).catch(function(){ resolve(); });
+      });
+    });
+
+    Promise.all(promises).then(function() {
+      current += batch.length;
+      var pct = Math.round((current / total) * 100);
+      progBar.style.width = pct + '%';
+      progText.textContent = '匯入中：' + current + ' / ' + total + ' (' + pct + '%)';
+      setTimeout(processNextBatch, 100); 
+    });
+  }
+  processNextBatch();
+}
+</script>
