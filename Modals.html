@@ -85,7 +85,7 @@
         <input id="mem-natural" placeholder="自然名（選填）">
       </div>
     </div>
-    <div class="form-row three">
+    <div class="form-row">
       <div class="form-group">
         <label>性別</label>
         <select id="mem-gender"></select>
@@ -94,9 +94,25 @@
         <label>電話</label>
         <input id="mem-phone" placeholder="電話">
       </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="margin-top:10px;">
+        <label>會員編號</label>
+        <input type="text" id="mem-no" placeholder="如：9487940" style="width:100%">
+      </div>
       <div class="form-group">
         <label>Email</label>
         <input id="mem-email" type="email" placeholder="Email">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="margin-top:10px;">
+        <label>出生年月日</label>
+        <input type="date" id="mem-birth" style="width:100%">
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label>入團日期</label>
+        <input type="date" id="mem-join" style="width:100%">
       </div>
     </div>
     <div class="form-row four">
@@ -119,7 +135,7 @@
     </div>
     <div class="flex-end mt-4">
       <button class="btn btn-outline" onclick="closeModal('modal-member')">取消</button>
-      <button class="btn btn-primary" onclick="saveMember()">儲存</button>
+      <button class="btn btn-primary" id="mem-save-btn" onclick="saveMember()">儲存</button>
     </div>
   </div>
 </div>
@@ -135,7 +151,7 @@
     </div>
     <div class="flex-end mt-4">
       <button class="btn btn-outline" onclick="closeModal('modal-family')">取消</button>
-      <button class="btn btn-primary" onclick="saveFamily()">儲存</button>
+      <button class="btn btn-primary" id="fam-save-btn" onclick="saveFamily()">儲存</button>
     </div>
   </div>
 </div>
@@ -176,7 +192,7 @@
     </div>
     <div class="flex-end mt-4">
       <button class="btn btn-outline" onclick="closeModal('modal-activity')">取消</button>
-      <button class="btn btn-primary" onclick="saveActivity()">儲存</button>
+      <button class="btn btn-primary" id="act-save-btn" onclick="saveActivity()">儲存</button>
     </div>
   </div>
 </div>
@@ -209,7 +225,8 @@
         <table id="import-preview-table">
           <thead><tr>
             <th>#</th><th>家庭名稱</th><th>姓名</th><th>自然名</th><th>角色</th>
-            <th>性別</th><th>團別</th><th>年級</th><th>職位</th><th>隊名</th><th>狀態</th>
+            <th>性別</th><th>團別</th><th>年級</th><th>職位</th><th>隊名</th>
+            <th>會員編號</th><th>出生年月日</th><th>入團日期</th><th>狀態</th>
           </tr></thead>
           <tbody id="import-preview-body"></tbody>
         </table>
@@ -345,7 +362,7 @@
       <div class="card" style="background:var(--mist)">
         <div style="font-size:22px;font-weight:700;color:var(--forest-md);margin-bottom:6px">✅ 使用者操作流程</div>
         <div style="font-size:20px;color:var(--ink-soft);line-height:1.8">
-          繳費頁 → 搜尋家庭 → 點擊「[成員姓名]－選設備」→ 選好數量後儲存 → 再點「回報繳費」即可。
+          繳費頁 → 搜尋家庭 → 點擊「[成員姓名]：選設備」→ 選好數量後儲存 → 再點「回報繳費」即可。
         </div>
       </div>
     </div>
@@ -551,4 +568,3 @@
     </div>
   </div>
 </div>
-
