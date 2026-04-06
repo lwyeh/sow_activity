@@ -125,7 +125,7 @@ function loadPayItems(fid) {
         s.details.forEach(function(d) {
           var dispName = d.naturalName || d.memberName;
           html += '<div style="display:flex;justify-content:space-between;font-size:20px;padding:3px 0;border-bottom:1px solid var(--line)">' +
-            '<span>' + esc(dispName) + ' — ' + esc(d.equipName) + ' x' + d.qty + '</span>' +
+            '<span>' + esc(dispName) + ' : ' + esc(d.equipName) + ' x' + d.qty + '</span>' +
             '<span style="color:var(--forest-md)">$' + d.subtotal + '</span>' +
           '</div>';
         });
@@ -174,7 +174,7 @@ function loadPayItems(fid) {
               html += '<button class="btn btn-outline btn-xs" ' +
                 // ★ 這裡在最後面加了 , this 將按鈕元素本身傳過去
                 'onclick="openType1Selection(\'' + s.actId + '\',\'' + esc(s.actName) + '\',\'' + fid + '\',\'' + m.id + '\', this)">' +
-                esc(dispName) + '—選設備</button>';
+                esc(dispName) + '：選設備</button>';
             });
           } else {
             html += '<button class="btn btn-outline btn-xs" style="color:var(--red); border-color:var(--red)" ' +
@@ -480,7 +480,7 @@ function quickSelectType2(pos) {
   targets.forEach(function(m) {
     var exists = _type2BatchItems.some(function(i){ return i.memberId === m.id && i.equipId === equipId; });
     if (!exists) {
-      var dispName = m.naturalName || m.name; 
+      var dispName = (m.naturalName || m.name) + '(' + m.familyName + ')';
       _type2BatchItems.push({ memberId: m.id, familyId: m.familyId, name: dispName, equipId: equipId, equipName: equipName, qty: qty, unitPrice: unitPrice, subtotal: qty * unitPrice });
     }
   });
@@ -505,7 +505,7 @@ function addType2SingleMember() {
 
   var exists = _type2BatchItems.some(function(i){ return i.memberId === m.id && i.equipId === equipId; });
   if (!exists) {
-    var dispName = m.naturalName || m.name; 
+    var dispName = (m.naturalName || m.name) + '(' + m.familyName + ')';
     _type2BatchItems.push({ memberId: m.id, familyId: m.familyId, name: dispName, equipId: equipId, equipName: equipName, qty: qty, unitPrice: unitPrice, subtotal: qty * unitPrice });
     _renderType2Batch();
     toast('已個別加入：' + dispName, 'success');
@@ -522,7 +522,7 @@ function _renderType2Batch() {
   var html = '<div style="max-height:240px;overflow-y:auto">';
   _type2BatchItems.forEach(function(item, idx) {
     html += '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:5px 0;font-size:20px">' +
-      '<span>' + esc(item.name) + ' — ' + esc(item.equipName) + ' x' + item.qty + '</span><span style="color:var(--forest-md)">$' + item.subtotal +
+      '<span>' + esc(item.name) + ' : ' + esc(item.equipName) + ' x' + item.qty + '</span><span style="color:var(--forest-md)">$' + item.subtotal +
       ' <button style="background:none;border:none;color:var(--red);cursor:pointer;margin-left:6px" onclick="removeType2Item(' + idx + ')">✕</button></span></div>';
   });
   html += '</div><div style="font-size:20px;color:var(--ink-soft);margin-top:6px">共 ' + _type2BatchItems.length + ' 筆</div>';
@@ -849,7 +849,7 @@ function loadPayReport() {
     var detailHtml = '<div class="tbl-wrap"><table><thead><tr>';
     
     if (actualIndiv) {
-      detailHtml += '<th>家庭編號</th><th>家庭名稱</th><th>成員(自然名)</th><th>設備/費用項目</th><th>數量</th><th>小計</th><th>家庭狀態</th><th>內部備註</th><th>操作</th>';
+      detailHtml += '<th>家庭編號</th><th>家庭名稱</th><th>會員編號</th><th>成員(自然名)</th><th>設備/費用項目</th><th>數量</th><th>小計</th><th>家庭狀態</th><th>內部備註</th><th>操作</th>';
     } else {
       detailHtml += '<th>家庭編號</th><th>家庭名稱</th><th>應繳</th><th>已繳</th><th>未繳</th><th>狀態</th><th>方式</th><th>繳費日</th><th>回報備註</th><th>內部備註</th><th>操作</th>';
     }
@@ -862,7 +862,7 @@ function loadPayReport() {
       detailHtml += '<tr>';
       if (actualIndiv) {
         // 在顯示金額 r.amount 的地方加上 fmtMoney()
-        detailHtml += '<td>' + esc(r.familyNo || '') + '</td><td>' + esc(r.familyName) + '</td><td><strong style="color:var(--ink)">' + esc(r.memberName) + '</strong></td><td>' + esc(r.equipName) + '</td><td>' + r.qty + '</td><td>$' + fmtMoney(r.amount) + '</td><td style="' + sc + ';font-weight:700">' + esc(r.status) + '</td><td>' + adminNoteDisp + '</td>';
+        detailHtml += '<td>' + esc(r.familyNo || '') + '</td><td>' + esc(r.familyName) + '</td><td>' + esc(r.memberNo || '') + '</td><td><strong style="color:var(--ink)">' + esc(r.memberName) + '</strong></td><td>' + esc(r.equipName) + '</td><td>' + r.qty + '</td><td>$' + fmtMoney(r.amount) + '</td><td style="' + sc + ';font-weight:700">' + esc(r.status) + '</td><td>' + adminNoteDisp + '</td>';
       } else {
         // 在顯示金額 r.amount, r.paidTotal, r.remaining 的地方加上 fmtMoney()
         detailHtml += '<td>' + esc(r.familyNo || '') + '</td><td>' + esc(r.familyName) + '</td><td>$' + fmtMoney(r.amount) + '</td><td style="color:var(--forest-md)">$' + fmtMoney(r.paidTotal) + '</td><td style="color:var(--red)">$' + fmtMoney(r.remaining) + '</td><td style="' + sc + ';font-weight:700">' + esc(r.status) + '</td><td>' + esc(r.method) + '</td><td class="td-sm">' + esc(r.submitAt) + '</td><td class="td-sm">' + esc(r.note) + '</td><td>' + adminNoteDisp + '</td>';
@@ -891,13 +891,13 @@ function exportPayReport() {
 
     // ★ Excel 匯出也加入了「內部對帳備註」欄位
     var headers = actualIndiv 
-      ? ['家庭編號', '家庭名稱', '成員(自然名)', '設備/費用項目', '數量', '小計金額', '家庭繳費狀態', '內部對帳備註']
+      ? ['家庭編號', '家庭名稱', '會員編號', '成員(自然名)', '設備/費用項目', '數量', '小計金額', '家庭繳費狀態', '內部對帳備註']
       : ['家庭編號', '家庭名稱', '應繳金額', '已繳金額', '未繳金額', '繳費狀態', '繳費方式', '繳費日期', '確認日期', '回報備註', '內部對帳備註'];
-      
+
     var data = [headers];
     rows.forEach(function(r) { 
       if (actualIndiv) {
-        data.push([r.familyNo||'', r.familyName||'', r.memberName||'', r.equipName||'', r.qty||0, r.amount||0, r.status||'', r.adminNote||'']);
+        data.push([r.familyNo||'', r.familyName||'', r.memberNo||'', r.memberName||'', r.equipName||'', r.qty||0, r.amount||0, r.status||'', r.adminNote||'']);
       } else {
         data.push([r.familyNo||'', r.familyName||'', r.amount||0, r.paidTotal||0, r.remaining||0, r.status||'', r.method||'', r.submitAt||'', r.confirmAt||'', r.note||'', r.adminNote||'']); 
       }
@@ -984,7 +984,7 @@ function openType1Selection(actId, actName, familyId, memberId, btnElement) {
       var remainText = '';
       if (e.maxQty && e.maxQty > 0) {
         var color = e.remainQty > 0 ? 'var(--forest-md)' : 'var(--red)';
-        remainText = '　<span style="color:' + color + '">剩餘 ' + e.remainQty + ' 個</span> / 共' + e.maxQty;
+        remainText = '　<span style="color:' + color + '">剩餘' + e.remainQty + '個</span> / 共' + e.maxQty + '個';
       }
       
       var currentQty = e.myQty || 0;
@@ -1049,7 +1049,7 @@ function populateType2SingleMembers() {
   S.members.forEach(function(m) {
     if (m.position !== '離團') {
       var dispName = m.naturalName || m.name; 
-      sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + (m.familyNo ? ' ['+m.familyNo+']' : '') + '</option>';
+      sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + (m.familyName ? ' (' + m.familyName + ')' : '') + '</option>';
     }
   });
 }
