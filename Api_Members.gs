@@ -21,21 +21,24 @@ function saveFamily(data) {
   var sh  = getSheet(SHEET_FAMILIES);
   var id  = data.id ? String(data.id) : genId('F');
   var now = new Date();
-  var row = [id, data.name, now];
-  
+
   if (data.id) {
     var idx = findRowIndex(sh, 0, data.id);
     if (idx > 0) {
-      sh.getRange(idx, 8, 1, 1).setNumberFormat('@'); // 保留原有邏輯：設定第8欄為純文字
+      // 若是更新現有家庭，只寫入前三欄，保留原有的第 4 欄 (家庭編號)
+      var row = [id, data.name, now];
       sh.getRange(idx, 1, 1, row.length).setValues([row]);
       return { success: true, id: id };
     }
   }
+
+  // ★ 修復 3：若是新增家庭，自動依照列數產生 3 位數的「家庭編號」
   var newRow = sh.getLastRow() + 1;
+  var newNo = String(newRow - 1).padStart(3, '0');
+  var row = [id, data.name, now, newNo];
   sh.getRange(newRow, 1, 1, row.length).setValues([row]);
-  sh.getRange(newRow, 8, 1, 1).setNumberFormat('@');
-  sh.getRange(newRow, 8, 1, 1).setValue(data.phone || '');
-  return { success: true, id: id };
+
+  return { success: true, id: id, no: newNo };
 }
 
 function deleteFamily(familyId) {
@@ -78,11 +81,17 @@ function repairMissingFamilies() {
 
 // ── MEMBERS API (成員管理) ───────────────────────────────────────
 
+// ── 1. 取得成員資料 (加上防呆與新欄位) ──
 function getMembers() {
   var sh   = getSheet(SHEET_MEMBERS);
   var data = sh.getDataRange().getValues();
   if (data.length <= 1) return [];
+
   return data.slice(1).filter(function(r){ return r[0]; }).map(function(r){
+    // 日期防呆，確保傳給前端的是字串
+    var bDate = r[15] instanceof Date ? Utilities.formatDate(r[15], "GMT+8", "yyyy/MM/dd") : String(r[15] || '');
+    var jDate = r[16] instanceof Date ? Utilities.formatDate(r[16], "GMT+8", "yyyy/MM/dd") : String(r[16] || '');
+
     return {
       id:          String(r[0]),
       familyId:    String(r[1]),
@@ -96,7 +105,11 @@ function getMembers() {
       troop:       r[9],
       grade:       r[10],
       position:    r[11],
-      squad:       r[12]
+      squad:       r[12],
+      // r[13] 是建立時間
+      memberNo:    String(r[14] || ''), // 第15欄
+      birthDate:   bDate,               // 第16欄
+      joinDate:    jDate                // 第17欄
     };
   });
 }
@@ -113,10 +126,16 @@ function getMembersByTroop(troop) {
   return getMembers().filter(function(m){ return m.troop === troop; });
 }
 
+// ── 2. 儲存成員資料 (支援新欄位存檔) ──
 function saveMember(data) {
   var sh  = getSheet(SHEET_MEMBERS);
   var id  = data.id ? String(data.id) : genId('M');
   var now = new Date();
+  
+  // 日期防呆
+  var bDate = data.birthDate instanceof Date ? Utilities.formatDate(data.birthDate, "GMT+8", "yyyy/MM/dd") : String(data.birthDate || '');
+  var jDate = data.joinDate instanceof Date ? Utilities.formatDate(data.joinDate, "GMT+8", "yyyy/MM/dd") : String(data.joinDate || '');
+
   var row = [
     id,
     String(data.familyId || ''),
@@ -131,21 +150,23 @@ function saveMember(data) {
     data.grade       || '',
     data.position    || '',
     data.squad       || '',
-    now
+    now,
+    String(data.memberNo || ''),
+    bDate,
+    jDate
   ];
 
   if (data.id) {
     var idx = findRowIndex(sh, 0, data.id);
     if (idx > 0) {
-      sh.getRange(idx, 8, 1, 1).setNumberFormat('@'); // 設定電話欄位為純文字
+      sh.getRange(idx, 8, 1, 1).setNumberFormat('@'); // 電話純文字
       sh.getRange(idx, 1, 1, row.length).setValues([row]);
       return { success: true, id: id };
     }
   }
   var newRow = sh.getLastRow() + 1;
   sh.getRange(newRow, 1, 1, row.length).setValues([row]);
-  sh.getRange(newRow, 8, 1, 1).setNumberFormat('@');
-  sh.getRange(newRow, 8, 1, 1).setValue(data.phone || '');
+  sh.getRange(newRow, 8, 1, 1).setNumberFormat('@'); 
   return { success: true, id: id };
 }
 
@@ -157,7 +178,7 @@ function deleteMember(memberId) {
 }
 
 function dataCleanup() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getDb();
   var sheets = [SHEET_MEMBERS, SHEET_FAMILIES];
   
   sheets.forEach(function(name) {
