@@ -18,7 +18,7 @@ function doLogin() {
     btn.textContent = '身分驗證中...';
   }
 
-  // 呼叫後端的 verifyAdminLogin API (已在前一個步驟加進 Api_Payment.gs)
+  // 呼叫後端的 verifyAdminLogin API
   gas('verifyAdminLogin', user, pass).then(function(res) {
     if (res.success) {
       toast('登入成功！', 'success');
@@ -30,7 +30,10 @@ function doLogin() {
       S.adminAuth = true; 
       document.getElementById('admin-pwd').value = ''; // 安全起見清空密碼
       
-      // (選擇性) 如果您剛才有採用「方案A」，這裡可以順便觸發預載
+      // ★ 核心修復：登入成功後，立刻載入並繪製後台所有的資料與清單！
+      loadAdminData();
+      
+      // 觸發收費系統預載
       if (typeof loadPayActs === 'function') loadPayActs();
       
     } else {
@@ -61,7 +64,7 @@ function showAdminTab(name) {
     var btn = document.getElementById('atab-' + t);
     if(btn) btn.classList.toggle('active', t === name);
   });
-  if (name === 'activities') document.getElementById('act-stats-section').style.display = 'block';
+  // 已移除 act-stats-section 的顯示邏輯
   if (name === 'roster' && typeof loadRoster === 'function') loadRoster();
   if (name === 'payacts' && typeof loadPayActs === 'function') loadPayActs();
   if (name === 'paycheck' && typeof loadPayCheck === 'function') loadPayCheck();
@@ -172,7 +175,7 @@ function confirmQuickFamily() {
 
 function openMemberModal() {
   document.getElementById('modal-member-title').textContent = '新增成員';
-  ['mem-id','mem-name','mem-natural','mem-phone','mem-email'].forEach(function(id){ document.getElementById(id).value = ''; });
+  ['mem-id','mem-name','mem-natural','mem-phone','mem-email','mem-no','mem-birth','mem-join'].forEach(function(id){ document.getElementById(id).value = ''; });
   ['mem-family','mem-gender','mem-troop','mem-grade','mem-position','mem-squad'].forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.selectedIndex = 0;
@@ -191,6 +194,9 @@ function editMemberById(mid) {
   document.getElementById('mem-phone').value   = m.phone || '';
   document.getElementById('mem-email').value   = m.email || '';
   document.getElementById('mem-role').value    = m.role  || '家長';
+  document.getElementById('mem-no').value    = m.memberNo || '';
+  document.getElementById('mem-birth').value = m.birthDate ? m.birthDate.replace(/\//g, '-') : '';
+  document.getElementById('mem-join').value  = m.joinDate ? m.joinDate.replace(/\//g, '-') : '';
   setSelectValue('mem-family',   m.familyId);
   setSelectValue('mem-gender',   m.gender);
   setSelectValue('mem-troop',    m.troop);
@@ -220,14 +226,32 @@ function saveMember() {
     troop:       document.getElementById('mem-troop').value,
     grade:       document.getElementById('mem-grade').value,
     position:    document.getElementById('mem-position').value,
-    squad:       document.getElementById('mem-squad').value
+    squad:       document.getElementById('mem-squad').value,
+    memberNo:    document.getElementById('mem-no').value,
+    birthDate:   document.getElementById('mem-birth').value.replace(/-/g, '/'),
+    joinDate:    document.getElementById('mem-join').value.replace(/-/g, '/')
   };
+
+  // ★ 防連點機制：鎖定按鈕並更改文字
+  var btn = document.getElementById('mem-save-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '儲存中...';
+  }
 
   gas('saveMember', data).then(function() {
     toast('儲存成功', 'success');
     closeModal('modal-member');
     loadAdminData();
-  }).catch(function(e){ toast('儲存失敗', 'error'); });
+  }).catch(function(e){ 
+    toast('儲存失敗', 'error'); 
+  }).finally(function() {
+    // ★ 無論成功或失敗，最後都將按鈕恢復原狀
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '儲存';
+    }
+  });
 }
 
 function deleteMemberById(mid) {
@@ -283,11 +307,27 @@ function saveFamily() {
   var name = document.getElementById('fam-name').value.trim();
   if (!name) { toast('請填寫家庭名稱', 'error'); return; }
   var data = { id: document.getElementById('fam-id').value.trim() || null, name: name };
+  
+  // ★ 防連點：鎖定家庭儲存按鈕
+  var btn = document.getElementById('fam-save-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '儲存中...';
+  }
+
   gas('saveFamily', data).then(function() {
     toast('儲存成功', 'success');
     closeModal('modal-family');
     loadAdminData();
-  }).catch(function(){ toast('儲存失敗', 'error'); });
+  }).catch(function(){ 
+    toast('儲存失敗', 'error'); 
+  }).finally(function() {
+    // ★ 恢復按鈕狀態
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '儲存';
+    }
+  });
 }
 
 function deleteFamilyById(fid) {
@@ -320,14 +360,9 @@ function renderActivitiesAdminList() {
           '<button class="btn btn-outline btn-xs" data-aid="' + a.id + '" onclick="editActivityById(this.getAttribute(\'data-aid\'))">編輯</button>' +
           '<button class="btn btn-danger btn-xs" data-aid="' + a.id + '" onclick="deleteActivityById(this.getAttribute(\'data-aid\'))">刪除</button>' +
         '</div>' +
-        '<button class="btn btn-xs" style="background:var(--mist);color:var(--forest-md)" data-aid="' + a.id + '" onclick="quickLoadStats(this.getAttribute(\'data-aid\'))">查看報名</button>' +
       '</div>' +
     '</div>';
   }).join('');
-
-  var saEl = document.getElementById('stats-act-sel');
-  saEl.innerHTML = '<option value="">- 選擇活動 -</option>';
-  S.activities.forEach(function(a){ saEl.innerHTML += '<option value="' + a.id + '">' + a.name + '</option>'; });
 }
 
 function openActivityModal() {
@@ -365,12 +400,28 @@ function saveActivity() {
     deadline:  document.getElementById('act-deadline').value,
     status:    document.getElementById('act-status').value
   };
+
+  // ★ 防連點：鎖定活動儲存按鈕
+  var btn = document.getElementById('act-save-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '儲存中...';
+  }
+
   gas('saveActivity', data).then(function() {
     toast('儲存成功', 'success');
     closeModal('modal-activity');
     loadAdminData();
     if(typeof renderActivityListRsvp === 'function') renderActivityListRsvp();
-  }).catch(function(){ toast('儲存失敗', 'error'); });
+  }).catch(function(){ 
+    toast('儲存失敗', 'error'); 
+  }).finally(function() {
+    // ★ 恢復按鈕狀態
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '儲存';
+    }
+  });
 }
 
 function deleteActivityById(aid) {
@@ -381,12 +432,6 @@ function deleteActivityById(aid) {
     loadAdminData();
     if(typeof renderActivityListRsvp === 'function') renderActivityListRsvp();
   }).catch(function(){ toast('刪除失敗', 'error'); });
-}
-
-function quickLoadStats(aid) {
-  setSelectValue('stats-act-sel', aid);
-  if(typeof loadStats === 'function') loadStats();
-  document.getElementById('act-stats-section').scrollIntoView({ behavior:'smooth' });
 }
 
 // ── 名冊與升級 ────────────────────────────────────────────────────
@@ -497,10 +542,12 @@ function handleImportFile(file) {
   reader.onload = function(e) {
     try {
       var data = new Uint8Array(e.target.result);
-      var workbook = XLSX.read(data, {type: 'array'});
+      // ★ 修改 1：加入 cellDates: true，讓 Excel 將日期轉為標準 JavaScript Date 物件
+      var workbook = XLSX.read(data, {type: 'array', cellDates: true});
       var sheetName = workbook.SheetNames[0];
       var worksheet = workbook.Sheets[sheetName];
-      var json = XLSX.utils.sheet_to_json(worksheet, {header: 1}); 
+      // ★ 修改 2：使用 raw: true，將未加工的日期交給我們自己處理
+      var json = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: true}); 
       parseImportData(json);
     } catch(err) {
       statusEl.innerHTML = '<span style="color:var(--red)">檔案解析失敗，請確認是否為有效的 Excel 檔。</span>';
@@ -517,7 +564,7 @@ function parseImportData(rows) {
   
   var headers = rows[0].map(function(h){ return String(h||'').trim(); });
   var colMap = {};
-  ['家庭名稱', '姓名', '自然名', '角色', '性別', '電話', 'Email', '團別', '年級', '職位', '隊名'].forEach(function(k) {
+  ['家庭名稱', '姓名', '自然名', '角色', '性別', '電話', 'Email', '團別', '年級', '職位', '隊名', '會員編號', '出生年月日', '入團日期'].forEach(function(k) {
     var idx = headers.indexOf(k);
     if (idx >= 0) colMap[k] = idx;
   });
@@ -533,10 +580,21 @@ function parseImportData(rows) {
   for (var i = 2; i < rows.length; i++) {
     var r = rows[i];
     if (!r || !r.length || !r[colMap['姓名']]) continue;
-    
+     
     var item = { rowNum: i + 1 };
-    Object.keys(colMap).forEach(function(k) { item[k] = r[colMap[k]] !== undefined ? String(r[colMap[k]]).trim() : ''; });
-    
+    Object.keys(colMap).forEach(function(k) { 
+      var val = r[colMap[k]];
+      // ★ 修改 3：精準掌控日期格式！若是日期，強制格式化為 YYYY/MM/DD
+      if (val instanceof Date) {
+        var yyyy = val.getFullYear();
+        var mm = String(val.getMonth() + 1).padStart(2, '0');
+        var dd = String(val.getDate()).padStart(2, '0');
+        item[k] = yyyy + '/' + mm + '/' + dd;
+      } else {
+        item[k] = val !== undefined ? String(val).trim() : ''; 
+      }
+    });
+
     var stat = 'OK';
     if (!item['家庭名稱']) { stat = '缺家庭'; errs.push('第 ' + item.rowNum + ' 列：缺少家庭名稱'); }
     else if (!item['角色']) { stat = '缺角色'; errs.push('第 ' + item.rowNum + ' 列：缺少角色'); }
@@ -560,7 +618,7 @@ function parseImportData(rows) {
   var tbody = document.getElementById('import-preview-body');
   tbody.innerHTML = importData.slice(0, 50).map(function(d, idx) {
     var stClr = d.status === 'OK' ? 'color:var(--forest)' : 'color:var(--red);font-weight:700';
-    return '<tr><td class="td-sm">' + (idx + 1) + '</td><td>' + esc(d['家庭名稱']) + '</td><td>' + esc(d['姓名']) + '</td><td>' + esc(d['自然名']) + '</td><td>' + esc(d['角色']) + '</td><td>' + esc(d['性別']) + '</td><td>' + esc(d['團別']) + '</td><td>' + esc(d['年級']) + '</td><td>' + esc(d['職位']) + '</td><td>' + esc(d['隊名']) + '</td><td style="' + stClr + '">' + d.status + '</td></tr>';
+    return '<tr><td class="td-sm">' + (idx + 1) + '</td><td>' + esc(d['家庭名稱']) + '</td><td>' + esc(d['姓名']) + '</td><td>' + esc(d['自然名']) + '</td><td>' + esc(d['角色']) + '</td><td>' + esc(d['性別']) + '</td><td>' + esc(d['團別']) + '</td><td>' + esc(d['年級']) + '</td><td>' + esc(d['職位']) + '</td><td>' + esc(d['隊名']) + '</td><td>' + esc(d['會員編號']) + '</td><td>' + esc(d['出生年月日']) + '</td><td>' + esc(d['入團日期']) + '</td><td style="' + stClr + '">' + d.status + '</td></tr>';
   }).join('');
 
   document.getElementById('import-step-upload').style.display = 'none';
@@ -574,38 +632,74 @@ function confirmImport() {
   
   var total = importData.length, current = 0, successCount = 0;
   var progBar = document.getElementById('import-progress-bar'), progText = document.getElementById('import-progress-text');
-  var famMap = {}; S.families.forEach(function(f){ famMap[f.name] = f.id; });
+  var famMap = {}; 
+  S.families.forEach(function(f){ famMap[f.name] = f.id; });
 
-  function processNextBatch() {
-    var batch = importData.slice(current, current + 10);
-    if (!batch.length) { 
+  // ★ 修復：改為「嚴格的單線程循序處理」，完全消滅併發覆寫 (Race Condition)
+  function processNext() {
+    // 檢查是否全部處理完畢
+    if (current >= total) {
       document.getElementById('import-step-progress').style.display = 'none';
       document.getElementById('import-step-done').style.display = 'block';
       document.getElementById('import-done-msg').textContent = '匯入完成！';
       document.getElementById('import-done-sub').textContent = '成功新增了 ' + successCount + ' 筆資料。';
-      loadAdminData(); return; 
+      loadAdminData(); 
+      return;
     }
 
-    var promises = batch.map(function(d) {
-      return new Promise(function(resolve) {
-        var fname = d['家庭名稱'];
-        var checkFam = Promise.resolve(famMap[fname]);
-        if (!famMap[fname]) checkFam = gas('saveFamily', { name: fname }).then(function(res){ famMap[fname] = res.id; return res.id; });
-        
-        checkFam.then(function(fid) {
-          return gas('saveMember', { familyId: fid, name: d['姓名'], naturalName: d['自然名'], role: d['角色'], gender: d['性別'], phone: d['電話'], email: d['Email'], troop: d['團別'], grade: d['年級'], position: d['職位'], squad: d['隊名'] });
-        }).then(function(){ successCount++; resolve(); }).catch(function(){ resolve(); });
-      });
-    });
+    var d = importData[current];
+    var fname = d['家庭名稱'];
 
-    Promise.all(promises).then(function() {
-      current += batch.length;
-      var pct = Math.round((current / total) * 100);
-      progBar.style.width = pct + '%';
-      progText.textContent = '匯入中：' + current + ' / ' + total + ' (' + pct + '%)';
-      setTimeout(processNextBatch, 100); 
+    // 1. 確保家庭已存在
+    var ensureFamily = function() {
+      if (famMap[fname]) return Promise.resolve(famMap[fname]); // 已有家庭，直接回傳 ID
+      return gas('saveFamily', { name: fname }).then(function(res) {
+        famMap[fname] = res.id; // 建立成功，記錄到字典，下一筆就能直接用
+        return res.id;
+      });
+    };
+
+    // 2. 拿到家庭ID後，再寫入成員資料
+    ensureFamily().then(function(fid) {
+      return gas('saveMember', { 
+        familyId: fid, 
+        familyName: d['家庭名稱'], 
+        name: d['姓名'], 
+        naturalName: d['自然名'], 
+        role: d['角色'], 
+        gender: d['性別'], 
+        phone: d['電話'], 
+        email: d['Email'], 
+        troop: d['團別'], 
+        grade: d['年級'], 
+        position: d['職位'], 
+        squad: d['隊名'], 
+        memberNo: d['會員編號'], 
+        birthDate: d['出生年月日'], 
+        joinDate: d['入團日期'] 
+      });
+    }).then(function() {
+      // 這筆確實存入後，才推進進度
+      successCount++;
+      current++;
+      updateProgress();
+      processNext(); // ★ 呼叫下一筆開始處理
+    }).catch(function(e) {
+      console.error('匯入失敗:', e);
+      current++;
+      updateProgress();
+      processNext(); // 就算這筆失敗，也繼續處理下一筆
     });
   }
-  processNextBatch();
+
+  function updateProgress() {
+    var pct = Math.round((current / total) * 100);
+    progBar.style.width = pct + '%';
+    progText.textContent = '匯入中：' + current + ' / ' + total + ' (' + pct + '%)';
+  }
+
+  // 啟動進度條並開始處理第一筆
+  updateProgress();
+  processNext(); 
 }
 </script>
