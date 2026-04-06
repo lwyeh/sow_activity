@@ -192,29 +192,221 @@ tr:hover td{background:#fafcfb}
   .nav-btn{padding:6px 10px;font-size:26px}
   .member-row{grid-template-columns:1fr}
 }
-/* 強制字體大小 - 覆蓋所有設定 */
+
+/* 強制字體大小 - 覆蓋所有設定 (1.3倍大小) */
 body, body *{font-size-adjust:none}
-body{font-size:30px !important}
+body{font-size:26px !important}
 body *:not(i):not(svg):not(path){font-size:inherit}
-.nav-btn{font-size:27px !important}
-.pg-title{font-size:42px !important}
-.pg-sub{font-size:27px !important}
-label{font-size:26px !important}
-input,select,textarea{font-size:30px !important}
-.btn{font-size:27px !important}
-.btn-sm{font-size:26px !important}
-.btn-xs{font-size:24px !important}
-.badge{font-size:24px !important}
-table,table *{font-size:26px !important}
-.card-title{font-size:32px !important}
-.act-name{font-size:32px !important}
-.act-meta{font-size:26px !important}
-.stat-num{font-size:48px !important}
-.stat-lbl{font-size:26px !important}
-.tab{font-size:27px !important}
-.toast{font-size:27px !important}
-.empty{font-size:27px !important}
-.mname{font-size:27px !important}
-.modal-title{font-size:33px !important}
-.sts-btn{font-size:27px !important}
+.nav-btn{font-size:23px !important}
+.pg-title{font-size:36px !important}
+.pg-sub{font-size:23px !important}
+label{font-size:23px !important}
+input,select,textarea{font-size:26px !important}
+.btn{font-size:23px !important}
+.btn-sm{font-size:23px !important}
+.btn-xs{font-size:21px !important}
+.badge{font-size:21px !important}
+table,table *{font-size:23px !important}
+.card-title{font-size:28px !important}
+.act-name{font-size:28px !important}
+.act-meta{font-size:23px !important}
+.stat-num{font-size:42px !important}
+.stat-lbl{font-size:23px !important}
+.tab{font-size:23px !important}
+.toast{font-size:23px !important}
+.empty{font-size:23px !important}
+.mname{font-size:23px !important}
+.modal-title{font-size:29px !important}
+.sts-btn{font-size:23px !important}
+
+/* =========================================
+   版面優化補丁 (最終整合版：2026RWD流動版面)
+   ========================================= */
+
+/* 1. 放大整體主畫面，讓報表與表格有足夠的呼吸空間 */
+.container, .page {
+  max-width: 1200px !important;
+  width: 98%;
+  margin: 0 auto;
+}
+
+/* 2. 解決登入框太窄文字換行，同時保護其他卡片不被縮小 */
+#page-admin .card, .login-box {
+  max-width: 450px; /* 預設給登入框較窄的寬度 */
+  width: 95%;
+  margin: 20px auto;
+}
+/* 強制將管理後台各分頁內的卡片恢復為 100% 撐滿 */
+div[id^="aTab-"] .card {
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box;
+  margin: 0 0 16px 0;
+}
+
+/* 3. 解決管理後台所有選單換行問題 (單行滑動式) */
+.admin-tabs,
+.nav-tabs,
+div[id^="aTab-"] > div:first-child {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  white-space: nowrap !important;
+  padding-bottom: 8px !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 確保選單內的按鈕文字絕對不換行，且依文字長度自動調整按鈕寬度 */
+.admin-tabs > *,
+.nav-tabs > *,
+div[id^="aTab-"] > div:first-child button {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  min-width: max-content !important;
+  padding: 8px 16px !important;
+}
+
+/* 美化選單水平捲軸，使其更精緻 */
+.admin-tabs::-webkit-scrollbar { height: 6px; }
+.admin-tabs::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+
+/* 4. 解決表單彈窗 (Modal) 與日期輸入框破版 */
+.modal {
+  max-width: 650px !important;
+  width: 95%;
+  box-sizing: border-box;
+}
+input, select, textarea {
+  box-sizing: border-box !important;
+  max-width: 100%;
+}
+/* 讓並排的表單在電腦上完美並排，螢幕太小時(手機)自動變成上下堆疊 */
+.form-group[style*="display:flex"],
+.form-group[style*="display: flex"] {
+  flex-wrap: wrap !important;
+}
+.form-group[style*="display:flex"] > div,
+.form-group[style*="display: flex"] > div {
+  flex: 1;
+  min-width: 200px !important;
+}
+
+/* 5. 確保大表格在手機上可左右滑動，且收費統計表齊平撐滿 */
+.tbl-wrap {
+  width: 100%;
+  overflow-x: auto;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+.tbl-wrap table {
+  width: 100% !important;
+  min-width: 600px; /* 手機上維持表格最小寬度，避免字體被擠壓變形 */
+}
+
+/* =========================================
+   大表格終極優化：獨立視窗與凍結表頭
+   ========================================= */
+
+/* 1. 限制大表格的最大高度，讓它產生自己的垂直捲軸 */
+.tbl-wrap {
+  /* 限制高度為螢幕高度的 70% (vh = viewport height)。
+     這樣不管螢幕多大，水平捲軸永遠會出現在視窗底端供人拉動 */
+  max-height: 70vh; 
+  overflow-y: auto; /* 允許垂直滾動 */
+}
+
+/* 2. 凍結表頭 (Sticky Header)：往下滑時標題列永遠置頂 */
+.tbl-wrap th {
+  position: sticky;
+  top: 0; /* 黏在距離頂部 0 的位置 */
+  z-index: 10; /* 確保標題列蓋在資料之上 */
+  background: #eef2f5 !important; /* 必須給予實體的背景底色，否則滑動時文字會與下方資料重疊 */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08); /* 加上淡淡的陰影，看起來更像懸浮的表頭 */
+}
+
+/* =========================================
+   精準鎖定：管理後台主選單絕對不換行 (修復破版)
+   ========================================= */
+
+/* 1. 確保外層選單容器可以水平滑動 */
+.admin-tabs,
+.nav-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  white-space: nowrap !important;
+  padding-bottom: 8px !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 2. 精準鎖定「按鈕」(嚴格區分大小寫，只抓小寫 atab- 開頭) */
+[id^="atab-"] {
+  white-space: nowrap !important; 
+  word-break: keep-all !important; 
+  min-width: max-content !important; 
+  flex-shrink: 0 !important; 
+  padding: 8px 12px !important; 
+  /* ⚠️ 絕對不加 display !important，以免覆蓋 JS 的切換邏輯 */
+}
+
+/* 3. 確保按鈕內部的圖示或文字不會自己斷行 */
+[id^="atab-"] * {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+/* 美化選單水平捲軸 */
+.admin-tabs::-webkit-scrollbar { height: 6px; }
+.admin-tabs::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+
+/* =========================================
+   手機版面 (RWD) 細節修復補丁
+   ========================================= */
+
+/* 1. 最上方主導覽列防破版 (全域適用) */
+.nav-btn {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+/* 讓最上方的標題列容器允許折行或出現捲軸，避免撐破整個網頁 */
+body > div:first-child,
+.header,
+.top-nav {
+  flex-wrap: wrap !important;
+  max-width: 100vw;
+}
+
+/* 📱 以下專為手機螢幕 (寬度小於 768px) 進行的微調 */
+@media (max-width: 768px) {
+  
+  /* 1. 修復圖一：導覽列按鈕稍微縮小，適應小螢幕 */
+  .nav-btn {
+    padding: 6px 8px !important;
+    font-size: 14px !important;
+  }
+
+  /* 2. 修復圖二：報名彈窗內「出席/不出席/待確認」按鈕換行 */
+  .modal button, 
+  .modal .btn {
+    white-space: nowrap !important;
+    word-break: keep-all !important; /* 絕對禁止中文字斷行 */
+    font-size: 20px !important;   /* 從原本太小的 15px 放大到 20px */
+    padding-left: 8px !important; /* 稍微把按鈕左右的空間補回來一點 */
+    padding-right: 8px !important;
+  }
+
+  /* 3. 修復圖三：報名狀態「以團別顯示」右半邊被截斷 */
+  /* 攔截寫死在 JS 裡的並排設定，強制允許折行 */
+  div[style*="gap:8px;width:100%"],
+  div[style*="gap: 8px; width: 100%"] {
+    flex-wrap: wrap !important;
+  }
+  /* 將原本寫死 120px 的小隊區塊，改為手機上「一排顯示兩個 (45%)」 */
+  div[style*="min-width:120px"],
+  div[style*="min-width: 120px"] {
+    flex: 1 1 45% !important;
+    min-width: 45% !important;
+  }
+}
+
 </style>
