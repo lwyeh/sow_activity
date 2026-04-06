@@ -311,17 +311,15 @@ function renderViewTable(el, stats) {
     '<div class="stat-box" style="border-left:3px solid var(--amber)"><div class="stat-num">' + (stats.unregisteredFamilyCount||0) + '</div><div class="stat-lbl">尚未報名家庭</div></div>' +
   '</div>';
 
-  if (groupKey === 'family') {
+if (groupKey === 'family') {
     html += '<div class="tbl-wrap"><table>' +
       '<colgroup>' +
-        '<col style="width:90px">' +
-        '<col style="width:80px">' +
+        '<col style="width:110px">' +
         '<col style="width:72px">' +
         '<col style="width:140px">' +
         '<col style="width:110px">' +
       '</colgroup>' +
       '<thead><tr>' +
-        '<th>姓名</th>' +
         '<th>自然名</th>' +
         '<th>出席狀態</th>' +
         '<th>備註</th>' +
@@ -344,7 +342,8 @@ function renderViewTable(el, stats) {
 
       html += '<tbody>' +
         '<tr style="' + rowBg + '">' +
-          '<td colspan="5" style="padding:7px 12px;font-family:Georgia,serif;font-weight:700;font-size:26px;' + borderColor + '">' +
+          // ★ 總欄位數從 5 變成 4
+          '<td colspan="4" style="padding:7px 12px;font-family:Georgia,serif;font-weight:700;font-size:26px;' + borderColor + '">' +
             esc(r.name) +
             (r.hasRsvp === false ? '<span style="margin-left:8px;font-size:22px;background:#fce8e6;color:var(--red);padding:2px 7px;border-radius:10px;font-weight:600">未報名</span>' : '') +
             '<span style="float:right;font-size:24px;font-weight:400">' + summary + '</span>' +
@@ -353,33 +352,39 @@ function renderViewTable(el, stats) {
 
       if (r.globalNote) {
         html += '<tr style="background:#fffde7">' +
-          '<td colspan="2" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
+          // ★ 整體備註的合併欄位從 2 變成 1
+          '<td colspan="1" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
           '<td></td>' +
           '<td colspan="2" style="font-size:26px;color:#666">' + esc(r.globalNote) + '</td>' +
         '</tr>';
       }
       (r.members || []).forEach(function(m) {
         var badge, badgeStyle;
+        
+        // ★ 防呆：優先顯示自然名，若沒有自然名才顯示姓名
+        var dispName = m.naturalName || m.name; 
+
         if (m.status === '未報名') {
           badgeStyle = 'background:#f5f5f5;color:#999;display:inline-flex;align-items:center;padding:3px 9px;border-radius:12px;font-size:24px;font-weight:700';
           html += '<tr style="opacity:.65">' +
-            '<td style="white-space:nowrap"><strong>' + esc(m.name) + '</strong></td>' +
-            '<td style="white-space:nowrap;color:var(--ink-soft)">' + esc(m.naturalName || '') + '</td>' +
+            // ★ 拿掉姓名，直接將自然名加粗顯示
+            '<td style="white-space:nowrap"><strong>' + esc(dispName) + '</strong></td>' +
             '<td style="white-space:nowrap"><span style="' + badgeStyle + '">未報名</span></td>' +
             '<td style="font-size:26px;color:var(--ink-soft)">—</td>' +
             '<td style="font-size:24px;color:var(--ink-soft);white-space:nowrap">—</td>' +
           '</tr>';
         } else if (m.name === '整體備註') {
           html += '<tr style="background:#fffde7">' +
-            '<td colspan="2" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
+            // ★ 整體備註的合併欄位從 2 變成 1
+            '<td colspan="1" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
             '<td></td>' +
             '<td colspan="2" style="font-size:26px;color:var(--ink-soft)">' + esc(m.note || '') + '</td>' +
           '</tr>';
         } else {
           badge = m.status==='出席' ? 'badge-attend' : m.status==='不出席' ? 'badge-absent' : 'badge-pending';
           html += '<tr>' +
-            '<td style="white-space:nowrap"><strong>' + esc(m.name) + '</strong></td>' +
-            '<td style="white-space:nowrap;color:var(--ink-soft)">' + esc(m.naturalName || '') + '</td>' +
+            // ★ 拿掉姓名，直接將自然名加粗顯示
+            '<td style="white-space:nowrap"><strong>' + esc(dispName) + '</strong></td>' +
             '<td style="white-space:nowrap"><span class="badge ' + badge + '">' + m.status + '</span></td>' +
             '<td style="font-size:26px;color:var(--ink-soft)">' + esc(m.note || '') + '</td>' +
             '<td style="font-size:24px;color:var(--ink-soft);white-space:nowrap">' + esc(m.rsvpTime || '') + '</td>' +
@@ -389,7 +394,6 @@ function renderViewTable(el, stats) {
       html += '</tbody>';
     });
     html += '</table></div>';
-
   } else if (groupKey === 'troop') {
     // 省略：這是原本很長的團別渲染邏輯，保持原封不動
     var TROOP_ORDER   = ['蟻','蜂','鹿','鷹','育','複式'];
@@ -568,25 +572,75 @@ function renderViewTable(el, stats) {
       if (r.name === '鷹') {
         var eagleKids  = merged.filter(function(m){ return m.position === '小鷹'; });
         var eagleStaff = merged.filter(function(m){ return m.position !== '小鷹'; });
-        html += '<div style="display:flex;gap:8px;width:100%">' +
-          '<div style="flex:3">' + renderSquadBlock('🐥 小鷹', sortByPosition(eagleKids, posRule.squads), '#6aab8e', 3) + '</div>' +
-          '<div style="flex:1">' + renderStaffRow(sortByPosition(eagleStaff, posRule.staff), 1) + '</div>' +
-        '</div>';
+        html += '<div style="display:flex;gap:8px;width:100%;margin-bottom:8px">';
+        html += '<div style="flex:1;min-width:120px">' + renderSquadBlock('🐥 小鷹', sortByPosition(eagleKids, posRule.squads), '#6aab8e', 2)+ '</div>';
+        html += '<div style="flex:1;min-width:120px">' + renderStaffRow(sortByPosition(eagleStaff, posRule.staff), 2) + '</div>';
+        html += '</div>';
       } else if (r.name === '育') {
-        var knownSquads = squadsOfTroop.concat(ikuSpecialSquads);
-        var staffMembers = merged.filter(function(m){ return knownSquads.indexOf(m.squad) < 0; });
+        var regSquads = squadsOfTroop; // 常規小隊：['花叢小隊','天空小隊','草原小隊','大地小隊']
+        
+        // 準備分類容器
+        var staffMembers = [];
+        var regSquadMembers = {};
+        regSquads.forEach(function(sq) { regSquadMembers[sq] = []; });
+        var eagleIkuMembers = [];
+        var deerIkuMembers = [];
+        var littleAntMembers = [];
+
+        // 精準分流每個成員
+        merged.forEach(function(m) {
+          var sq = m.squad || '無';
+          var pos = m.position || '';
+          
+          if (pos === '小小蟻') {
+            littleAntMembers.push(m);
+          } else if (pos === '鷹育' || sq === '鷹育') {
+            eagleIkuMembers.push(m);
+          } else if (pos === '鹿育' || sq === '鹿育') {
+            deerIkuMembers.push(m);
+          } else if (regSquads.indexOf(sq) >= 0) {
+            regSquadMembers[sq].push(m);
+          } else {
+            // 剩下的（包含隊名為無，且職位不為鹿育/鷹育/小小蟻）全部歸為幹部
+            staffMembers.push(m);
+          }
+        });
+
+        // ==========================================
+        // 第 1 排：幹部區塊 (依照職位排序，每排最多 4 人)
+        // ==========================================
         html += renderStaffRow(sortByPosition(staffMembers, posRule.staff), 4);
-        html += '<div style="display:flex;gap:8px;width:100%">';
-        squadsOfTroop.forEach(function(sq, i) {
-          var sqMembers = merged.filter(function(m){ return m.squad === sq; });
+        
+        // ==========================================
+        // 第 2 排：常規小隊區塊 (並排顯示)
+        // ==========================================
+        html += '<div style="display:flex;gap:8px;width:100%;margin-bottom:8px">';
+        regSquads.forEach(function(sq, i) {
           var dispSq = SQUAD_EMOJI[sq] || sq;
-          html += '<div style="flex:1;min-width:120px">' + renderSquadBlock(dispSq, sortByPosition(sqMembers, posRule.squads), sqColors[i % sqColors.length]) + '</div>';
+          html += '<div style="flex:1;min-width:120px">' + renderSquadBlock(dispSq, sortByPosition(regSquadMembers[sq], posRule.squads), sqColors[i % sqColors.length]) + '</div>';
         });
         html += '</div>';
-        ikuSpecialSquads.forEach(function(sq) {
-          var sqMembers = merged.filter(function(m){ return m.squad === sq; });
-          if (sqMembers.length) html += renderSquadBlock(sq, sqMembers, '#7a8a9e');
-        });
+
+        // ==========================================
+        // 第 3 排：鷹育 與 鹿育 (並排顯示，每排最多 2 人)
+        // ==========================================
+        if (eagleIkuMembers.length > 0 || deerIkuMembers.length > 0) {
+          html += '<div style="display:flex;gap:8px;width:100%;margin-bottom:8px">';
+          if (eagleIkuMembers.length > 0) {
+            html += '<div style="flex:1;min-width:120px">' + renderSquadBlock('🦅 鷹育', sortByPosition(eagleIkuMembers, posRule.squads), '#7a8a9e', 2) + '</div>';
+          }
+          if (deerIkuMembers.length > 0) {
+            html += '<div style="flex:1;min-width:120px">' + renderSquadBlock('🦌 鹿育', sortByPosition(deerIkuMembers, posRule.squads), '#8a7a9e', 2) + '</div>';
+          }
+          html += '</div>';
+        }
+
+        // ==========================================
+        // 第 4 排：小小蟻 (獨立區塊，每排最多 4 人)
+        // ==========================================
+        if (littleAntMembers.length > 0) {
+          html += '<div style="width:100%">' + renderSquadBlock('🐜 小小蟻', sortByPosition(littleAntMembers, posRule.squads), '#d4a373', 4) + '</div>';
+        }
       } else if (squadsOfTroop.length > 0) {
         var staffMembers = merged.filter(function(m){ return squadsOfTroop.indexOf(m.squad) < 0; });
         html += renderStaffRow(sortByPosition(staffMembers, posRule.staff), 4);
@@ -748,5 +802,4 @@ function selectRsvpFamily(fid) {
     console.error("找不到 goRsvpByFamily 函式");
   }
 }
-
 </script>
