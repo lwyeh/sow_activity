@@ -519,7 +519,7 @@ function getPayReport(actId, reportMode, posFilter) {
 
   // 讀取管理員專屬的「對帳備註」
   var adminNotesMap = {};
-  var noteSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('對帳備註');
+  var noteSh = getDb().getSheetByName('對帳備註');
   if (noteSh) {
     var nData = noteSh.getDataRange().getValues();
     for (var i = 1; i < nData.length; i++) {
@@ -603,11 +603,19 @@ function getPayReport(actId, reportMode, posFilter) {
       if (details && details.length > 0) {
         details.forEach(function(d) {
           // 👉 這裡的 push 多加了 memberNo: mNo, joinDate: jDate
-          results.push({ familyId: fid, familyNo: fam.no || '', familyName: fam.name || fid, memberNo: mNo, memberName: dispName, joinDate: jDate, equipName: d.equipName, qty: d.qty, amount: d.amount, status: fs.status || '未繳', submitAt: fs.submitAt, note: fs.note, adminNote: aNote, activeRecords: fs.activeRecords });
+          results.push({ 
+            familyId: fid, familyNo: fam.no || '', familyName: fam.name || fid, 
+            memberNo: mem.memberNo || '', // 👉 確保這裡有加上
+            memberName: dispName, equipName: d.equipName, qty: d.qty, amount: d.amount, status: fs.status || '未繳', submitAt: fs.submitAt, note: fs.note, adminNote: aNote, activeRecords: fs.activeRecords 
+          });
         });
       } else {
         // 👉 這裡的 push 也多加了 memberNo: mNo, joinDate: jDate
-        results.push({ familyId: fid, familyNo: fam.no || '', familyName: fam.name || fid, memberNo: mNo, memberName: dispName, joinDate: jDate, equipName: '無項目', qty: 0, amount: 0, status: fs.status || '未產生費用', submitAt: fs.submitAt, note: fs.note, adminNote: aNote, activeRecords: fs.activeRecords });
+        results.push({ 
+          familyId: fid, familyNo: fam.no || '', familyName: fam.name || fid, 
+          memberNo: mem.memberNo || '', // 👉 確保這裡有加上
+          memberName: dispName, equipName: '無項目', qty: 0, amount: 0, status: fs.status || '未產生費用', submitAt: fs.submitAt, note: fs.note, adminNote: aNote, activeRecords: fs.activeRecords 
+        });
       }
     });
     return results;
@@ -758,7 +766,7 @@ function getPendingRefunds(filterActId) {
 
 // ── 新增：儲存管理員對帳備註 (修正日期自動轉換問題) ────────────────────────────────
 function saveAdminNote(actId, familyId, note) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getDb();
   var sh = ss.getSheetByName('對帳備註');
   
   // 如果還沒有這張表，系統自動建立並寫入標題
