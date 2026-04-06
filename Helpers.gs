@@ -9,7 +9,7 @@ function include(filename) {
 
 // ── Spreadsheet Helpers ──────────────────────────────────────────
 function getSheet(name) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getDb();
   var sh = ss.getSheetByName(name);
   if (!sh) { 
     setupSheets();
@@ -46,4 +46,15 @@ function formatDateTime(d) {
 // ── ID Generator ─────────────────────────────────────────────────
 function genId(prefix) {
   return prefix + Date.now() + Math.random().toString(36).slice(2,6).toUpperCase();
+}
+
+// ================================================================
+//  系統環境設定
+// ================================================================
+// ★ 將這裡換成您試算表的真實 ID
+var DATABASE_SHEET_ID = '1MLSP6VpPhzqFuey6BUQDk1YTJ2uuPc9Lhyad5mqJOPA'; 
+
+// 建立一個取代 getActiveSpreadsheet() 的連線函式
+function getDb() {
+  return SpreadsheetApp.openById(DATABASE_SHEET_ID);
 }
