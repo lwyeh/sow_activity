@@ -12,14 +12,16 @@
 
 <header class="site-header">
   <div class="logo">
-    <span>荒野親子團報名系統</span>
+    <span>竹三親子團</span>
     <span class="logo-badge">荒野</span>
   </div>
   <nav class="header-nav">
     <button class="nav-btn active" onclick="showPage('rsvp')">📅 報名活動</button>
     <button class="nav-btn" onclick="showPage('pay')">💳 繳費</button>
     <button class="nav-btn" onclick="showPage('view')">📊 報名狀態</button>
-    <button class="nav-btn" onclick="showPage('admin')">⚙️ 管理後台</button>
+    <? if (isAdminPage) { ?>
+      <button class="nav-btn" onclick="showPage('admin')">⚙️ 管理後台</button>
+    <? } ?>
   </nav>
 </header>
 
@@ -74,6 +76,7 @@
   </div>
 </div>
 
+<? if (isAdminPage) { ?>
 <div class="page" id="page-admin">
   <div id="admin-login" class="login-box">
     <div class="card" style="max-width: 400px; margin: 0 auto;">
@@ -143,7 +146,6 @@
         <button class="btn btn-primary btn-sm" onclick="openActivityModal()">+ 新增活動</button>
       </div>
       <div id="activities-admin-list"></div>
-
       <div id="act-stats-section" style="display:none;margin-top:24px">
         <div class="card-title" style="border-bottom:2px solid var(--forest-lt);padding-bottom:10px;margin-bottom:16px;font-family:'Georgia','Times New Roman',serif;font-size:22px;font-weight:700">
           報名統計
@@ -161,7 +163,6 @@
         <div id="stats-content"></div>
       </div>
     </div>
-
     <div id="aTab-payacts" style="display:none">
       <div class="flex-between" style="margin-bottom:16px">
         <div></div>
@@ -210,6 +211,7 @@
 
   </div>
 </div>
+<? } ?>
 
 <div class="toast-wrap" id="toast-wrap"></div>
 
@@ -220,7 +222,8 @@
 <?!= include('JS_Main'); ?>
 <?!= include('JS_RSVP'); ?>
 <?!= include('JS_Payment'); ?>
-<?!= include('JS_Admin'); ?>
-
+<? if (isAdminPage) { ?>
+  <?!= include('JS_Admin'); ?>
+<? } ?>
 </body>
 </html>
