@@ -27,6 +27,8 @@ function doLogin() {
       document.getElementById('admin-login').style.display = 'none';
       document.getElementById('admin-body').style.display = 'block';
       
+      setMenuByRole(res.role);
+
       S.adminAuth = true; 
       document.getElementById('admin-pwd').value = ''; // 安全起見清空密碼
       
@@ -48,6 +50,50 @@ function doLogin() {
       btn.textContent = '登入';
     }
   });
+}
+
+// 控制選單顯示/隱藏的函數
+function setMenuByRole(role) {
+  
+  // 1. 為了安全，我們先把所有選單都隱藏起來 (display = 'none')
+  document.getElementById('atab-members').style.display = 'none';
+  document.getElementById('atab-families').style.display = 'none';
+  document.getElementById('atab-activities').style.display = 'none';
+  document.getElementById('atab-roster').style.display = 'none';
+  document.getElementById('atab-payacts').style.display = 'none';
+  document.getElementById('atab-paycheck').style.display = 'none';
+  document.getElementById('atab-payreport').style.display = 'none';
+
+  // 2. 根據不同角色，把對應的選單打開 (display = 'block' 或是 'inline-block')
+  if (role === 'admin') {
+    // admin: 全開
+    document.getElementById('atab-members').style.display = 'block';
+    document.getElementById('atab-families').style.display = 'block';
+    document.getElementById('atab-activities').style.display = 'block';
+    document.getElementById('atab-roster').style.display = 'block';
+    document.getElementById('atab-payacts').style.display = 'block';
+    document.getElementById('atab-paycheck').style.display = 'block';
+    document.getElementById('atab-payreport').style.display = 'block';
+
+    document.getElementById('atab-members').click();
+    
+  } else if (role === 'userdata') {
+    // userdata: 只開前四個
+    document.getElementById('atab-members').style.display = 'block';
+    document.getElementById('atab-families').style.display = 'block';
+    document.getElementById('atab-activities').style.display = 'block';
+    document.getElementById('atab-roster').style.display = 'block';
+
+    document.getElementById('atab-members').click();
+    
+  } else if (role === 'finance') {
+    // finance: 只開後三個
+    document.getElementById('atab-payacts').style.display = 'block';
+    document.getElementById('atab-paycheck').style.display = 'block';
+    document.getElementById('atab-payreport').style.display = 'block';
+
+    document.getElementById('atab-payacts').click();
+  }
 }
 
 function doLogout() {
