@@ -129,6 +129,17 @@ function loadFamilyMembers(familyId) {
     gas('getRsvpByActivity', S.rsvp.activityId)
   ]).then(function(results) {
     var members  = results[0] || [];
+
+    // ====== 👇 新增這段過濾邏輯：排除「離團」成員 👇 ======
+    members = members.filter(function(m) {
+      // 確保 m.position 有值，並且裡面「不包含」離團兩個字
+      if (m.position && m.position.indexOf('離團') !== -1) {
+        return false; // 包含「離團」，過濾掉
+      }
+      return true; // 其他人都保留
+    });
+    // ====== 👆 新增這段過濾邏輯 👆 ======
+
     var rsvpList = results[1] || [];
 
     S.rsvp.memberStatuses = {};
