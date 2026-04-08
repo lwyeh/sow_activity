@@ -476,7 +476,7 @@ function rejectPayRecord(recordId, reason) {
                  '您於 ' + submitDate + ' 提交的「' + actName + '」繳費回報（' + method + ' $' + amount + '），' +
                  '已由管理員退回。\n\n' +
                  '【退回原因】：\n' + reason + '\n\n' +
-                 '煩請您登入報名系統，進入「繳費」頁面查看明細，並重新回報，謝謝您的配合！\n\n' +
+                 '煩請您登入報名系統，進入「登記與繳費」頁面查看明細，並重新回報，謝謝您的配合！\n\n' +
                  '荒野親子團 系統自動通知';
       
       MailApp.sendEmail({
