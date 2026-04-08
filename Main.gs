@@ -12,7 +12,7 @@ var SHEET_PAY_EQUIPS  = '收費設備';   // ★ 新增
 var SHEET_PAY_DETAILS = '收費明細';
 var SHEET_PAY_RECORDS = '繳費紀錄';
 
-var ADMIN_PASSWORD    = 'admin1234';
+//var ADMIN_PASSWORD    = 'admin1234';
 
 // ── 系統常數 (選單選項) ──────────────────────────────────────────
 var TROOP_LIST   = ['蟻','蜂','鹿','鷹','育','複式'];
@@ -125,7 +125,7 @@ function setupSheets() {
 // =================================================================
 function generatePasswordHashTool() {
   // 👉 在這裡填入您想設定的密碼
-  var rawPassword = "test123"; 
+  var rawPassword = "test"; 
   
   // 計算 MD5 雜湊值
   var signature = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, rawPassword, Utilities.Charset.UTF_8);
@@ -170,10 +170,14 @@ function verifyAdminLogin(username, password) {
   for (var i = 1; i < data.length; i++) {
     var sheetUser = String(data[i][0]).trim();
     var sheetHash = String(data[i][1]).trim();
+    var sheetRole = String(data[i][2]).trim();
     
     // 比對帳號與雜湊值是否完全一致
     if (sheetUser === String(username).trim() && sheetHash === inputHash) {
-      return { success: true };
+      return { 
+        success: true,
+        role: sheetRole
+      };
     }
   }
   
