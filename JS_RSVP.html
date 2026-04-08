@@ -1,6 +1,5 @@
 <script>
 // ── 1. 報名首頁：渲染活動列表 ─────────────────────────────────────
-
 function renderActivityListRsvp() {
   var el = document.getElementById('activity-list-rsvp');
   if (!S.activities.length) {
@@ -76,7 +75,6 @@ function openRsvpFill() {
   document.getElementById('rsvp-fill-title').textContent = '填寫出席 - ' + S.rsvp.familyName;
   document.getElementById('rsvp-squad-family-picker').style.display = 'none';
   document.getElementById('rsvp-member-area').innerHTML = '<div class="loading"></div>';
-  document.getElementById('rsvp-global-note-area').style.display = 'none';
   document.getElementById('rsvp-submit-row').style.display = 'none';
   openModal('modal-rsvp-fill');
   loadFamilyMembers(S.rsvp.familyId);
@@ -86,7 +84,6 @@ function openRsvpFillSquad() {
   document.getElementById('rsvp-fill-title').textContent = '以小隊報名 - ' + S.rsvp.squadName;
   document.getElementById('rsvp-squad-family-picker').style.display = 'block';
   document.getElementById('rsvp-member-area').innerHTML = '<div class="empty">請先選擇家庭</div>';
-  document.getElementById('rsvp-global-note-area').style.display = 'none';
   document.getElementById('rsvp-submit-row').style.display = 'none';
 
   var squadMembers = S.members.filter(function(m){ return m.squad === S.rsvp.squadName; });
@@ -143,12 +140,10 @@ function loadFamilyMembers(familyId) {
     var rsvpList = results[1] || [];
 
     S.rsvp.memberStatuses = {};
-    var existingNote = '';
     var existingByMemberId = {};
     rsvpList.forEach(function(r){
       if (String(r.familyId) === String(familyId)) {
         existingByMemberId[String(r.memberId)] = { status: r.status, note: r.note };
-        if (r.memberName === '整體備註') existingNote = r.note;
       }
     });
 
@@ -159,9 +154,6 @@ function loadFamilyMembers(familyId) {
 
     renderMemberRsvpList(members);
 
-    var gnEl = document.getElementById('rsvp-global-note');
-    if (gnEl) gnEl.value = existingNote;
-    document.getElementById('rsvp-global-note-area').style.display = 'block';
     document.getElementById('rsvp-submit-row').style.display = 'flex';
   }).catch(function(e){ toast('載入失敗：' + e.message, 'error'); });
 }
@@ -246,11 +238,6 @@ function submitRsvp() {
     members.push({ id: mid, name: m.name, status: v.status, note: v.note || '' });
   });
 
-  var globalNote = document.getElementById('rsvp-global-note').value.trim();
-  if (globalNote) {
-    members.push({ id: 'GLOBAL_' + fid, name: '整體備註', status: '-', note: globalNote });
-  }
-
   if (!members.length) { toast('沒有成員資料', 'error'); return; }
 
   gas('submitRsvp', {
@@ -271,12 +258,24 @@ function submitRsvp() {
 }
 
 // ── 4. 前端：報名狀態檢視 (唯讀視圖) ──────────────────────────────────
-
 function populateViewActivitySelect() {
   var sel = document.getElementById('view-act-sel');
   if (!sel) return;
+
+  // 如果活動資料還是空的 (可能還在跟後端拿)，就顯示載入中
+  if (!S.activities || S.activities.length === 0) {
+    sel.innerHTML = '<option value="">(活動資料載入中...)</option>';
+    
+    // 設定一個定時器，0.5 秒後再檢查一次，直到有資料為止
+    setTimeout(populateViewActivitySelect, 500); 
+    return;
+  }
+
+  // 資料拿到了，正常畫出選單
   sel.innerHTML = '<option value="">- 請選擇活動 -</option>';
-  S.activities.forEach(function(a){ sel.innerHTML += '<option value="' + a.id + '">' + a.name + '</option>'; });
+  S.activities.forEach(function(a){ 
+    sel.innerHTML += '<option value="' + a.id + '">' + a.name + '</option>'; 
+  });
 }
 
 function setViewMode(mode) {
@@ -361,14 +360,6 @@ if (groupKey === 'family') {
           '</td>' +
         '</tr>';
 
-      if (r.globalNote) {
-        html += '<tr style="background:#fffde7">' +
-          // ★ 整體備註的合併欄位從 2 變成 1
-          '<td colspan="1" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
-          '<td></td>' +
-          '<td colspan="2" style="font-size:26px;color:#666">' + esc(r.globalNote) + '</td>' +
-        '</tr>';
-      }
       (r.members || []).forEach(function(m) {
         var badge, badgeStyle;
         
@@ -383,13 +374,6 @@ if (groupKey === 'family') {
             '<td style="white-space:nowrap"><span style="' + badgeStyle + '">未報名</span></td>' +
             '<td style="font-size:26px;color:var(--ink-soft)">—</td>' +
             '<td style="font-size:24px;color:var(--ink-soft);white-space:nowrap">—</td>' +
-          '</tr>';
-        } else if (m.name === '整體備註') {
-          html += '<tr style="background:#fffde7">' +
-            // ★ 整體備註的合併欄位從 2 變成 1
-            '<td colspan="1" style="font-size:26px;color:var(--ink-soft);font-style:italic">整體備註</td>' +
-            '<td></td>' +
-            '<td colspan="2" style="font-size:26px;color:var(--ink-soft)">' + esc(m.note || '') + '</td>' +
           '</tr>';
         } else {
           badge = m.status==='出席' ? 'badge-attend' : m.status==='不出席' ? 'badge-absent' : 'badge-pending';
@@ -583,9 +567,14 @@ if (groupKey === 'family') {
       if (r.name === '鷹') {
         var eagleKids  = merged.filter(function(m){ return m.position === '小鷹'; });
         var eagleStaff = merged.filter(function(m){ return m.position !== '小鷹'; });
-        html += '<div style="display:flex;gap:8px;width:100%;margin-bottom:8px">';
-        html += '<div style="flex:1;min-width:120px">' + renderSquadBlock('🐥 小鷹', sortByPosition(eagleKids, posRule.squads), '#6aab8e', 2)+ '</div>';
-        html += '<div style="flex:1;min-width:120px">' + renderStaffRow(sortByPosition(eagleStaff, posRule.staff), 2) + '</div>';
+
+        // 第 1 排：幹部 (團長、副團長，每排最多 4 人)
+        // 註：這裡改用 posRule.squads 排序，因為原本的設定陣列中包含了 ['團長','副團長','小鷹']
+        html += renderStaffRow(sortByPosition(eagleStaff, posRule.squads), 4);
+        
+        // 第 2 排：小鷹 (每排最多 4 人)
+        html += '<div style="width:100%;margin-bottom:8px">';
+        html += renderSquadBlock('🐥 小鷹', sortByPosition(eagleKids, posRule.squads), '#6aab8e', 4);
         html += '</div>';
       } else if (r.name === '育') {
         var regSquads = squadsOfTroop; // 常規小隊：['花叢小隊','天空小隊','草原小隊','大地小隊']
