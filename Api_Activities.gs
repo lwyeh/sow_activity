@@ -183,7 +183,7 @@ function getActivityStats(activityId) {
     }
 
     var m = memberMap[r.memberId] || {};
-    if (m.position === '離團') return;
+    if (m.position === '離團' || m.position === '無') return;
 
     rsvpFamilyIds[r.familyId] = true;
     if (r.status === '出席')    attend++;
@@ -210,7 +210,7 @@ function getActivityStats(activityId) {
   families.forEach(function(f) {
     if (!rsvpFamilyIds[f.id]) {
       unregisteredFamilyCount++;
-      var fmembers = members.filter(function(m){ return String(m.familyId) === String(f.id) && m.position !== '離團'; });
+      var fmembers = members.filter(function(m){ return String(m.familyId) === String(f.id) && m.position !== '離團' && m.position !== '無'; });
       byFamily[f.id] = {
         id: f.id, name: f.name,
         attend: 0, absent: 0, pending: 0,
@@ -223,12 +223,12 @@ function getActivityStats(activityId) {
     }
   });
   
-  var totalMembers = members.filter(function(m){ return m.position !== '離團'; }).length;
+  var totalMembers = members.filter(function(m){ return m.position !== '離團' && m.position !== '無'; }).length;
 
   // 依團別整理所有成員（含未報名），供前端顯示完整出席狀況
   var allMembersByTroop = {};
   members.forEach(function(m) {
-    if (m.position === '離團') return;
+    if (m.position === '離團' || m.position === '無') return;
     var tk = m.troop || '未分配';
     if (!allMembersByTroop[tk]) allMembersByTroop[tk] = [];
     allMembersByTroop[tk].push({ name: m.name, naturalName: m.naturalName || '', squad: m.squad || '', position: m.position || '' });

@@ -326,7 +326,7 @@ function renderFamiliesList() {
       '<div style="flex:1">' +
         '<div style="font-weight:700;margin-bottom:6px">' + (f.no ? '['+f.no+'] ' : '') + esc(f.name) + '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:5px">' +
-          fMembers.map(function(m){ return '<span class="tag">' + esc(m.name) + ' (' + (m.role||'') + ')</span>'; }).join('') +
+          fMembers.map(function(m){ return '<span class="tag">' + esc(m.naturalName || m.name) + ' (' + (m.role||'') + ')</span>'; }).join('') +
         '</div>' +
       '</div>' +
       '<div style="display:flex;gap:6px;flex-shrink:0">' +

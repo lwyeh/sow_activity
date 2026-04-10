@@ -608,7 +608,7 @@ function getPayReport(actId, reportMode, posFilter) {
 
   if (reportMode === '個人') {
     members.forEach(function(mem) {
-      if (mem.position === '離團') return;
+      if (mem.position === '離團' || mem.position === '無') return;
       if (posFilter && mem.position !== posFilter) return;
 
       var fid = mem.familyId;
@@ -651,10 +651,10 @@ function getPayReport(actId, reportMode, posFilter) {
     families.forEach(function(fam) {
       var fid = fam.id;
       if (posFilter) {
-        var hasMatch = members.some(function(m){ return m.familyId === fid && m.position === posFilter && m.position !== '離團'; });
+        var hasMatch = members.some(function(m){ return m.familyId === fid && m.position === posFilter && m.position !== '離團' && m.position !== '無'; });
         if (!hasMatch) return;
       }
-      var activeCount = members.filter(function(m){ return m.familyId === fid && m.position !== '離團'; }).length;
+      var activeCount = members.filter(function(m){ return m.familyId === fid && m.position !== '離團' && m.position !== '無'; }).length;
       if (activeCount === 0) return;
 
       var total = famTotals[fid];

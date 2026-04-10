@@ -28,6 +28,16 @@ function saveFamily(data) {
       // 若是更新現有家庭，只寫入前三欄，保留原有的第 4 欄 (家庭編號)
       var row = [id, data.name, now];
       sh.getRange(idx, 1, 1, row.length).setValues([row]);
+
+      // ★ 連動更新成員資料表中所有同家庭成員的家庭名稱（第 3 欄，index 2）
+      var msh  = getSheet(SHEET_MEMBERS);
+      var mdata = msh.getDataRange().getValues();
+      for (var mi = 1; mi < mdata.length; mi++) {
+        if (String(mdata[mi][1]) === String(data.id)) {
+          msh.getRange(mi + 1, 3).setValue(data.name);
+        }
+      }
+
       return { success: true, id: id };
     }
   }

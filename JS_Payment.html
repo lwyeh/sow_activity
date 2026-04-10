@@ -170,7 +170,7 @@ function loadPayItems(fid) {
           var famMembers = (S.members || []).filter(function(m) {
             var idMatch   = String(m.familyId || '').trim() === String(fid || '').trim();
             var nameMatch = String(m.familyName || '').trim() === currentSearchName;
-            return (idMatch || nameMatch) && (m.position || '') !== '離團';
+            return (idMatch || nameMatch) && (m.position || '') !== '離團' && (m.position || '') !== '無';
           });
 
           if (famMembers.length > 0) {
@@ -497,7 +497,7 @@ function quickSelectType2(pos) {
   var qty = parseInt(document.getElementById('type2-qty').value, 10) || 1;
   var targets = [];
   if (pos === '清除') { _type2BatchItems = []; _renderType2Batch(); return; }
-  if (pos === '全部') { targets = S.members.filter(function(m){ return m.position !== '離團'; }); } 
+  if (pos === '全部') { targets = S.members.filter(function(m){ return m.position !== '離團' && m.position !== '無'; }); } 
   else if (pos === '戶長') { var seen = {}; S.members.forEach(function(m){ if (m.role === '家長' && !seen[m.familyId]) { targets.push(m); seen[m.familyId] = true; } }); } 
   else { targets = S.members.filter(function(m){ return m.position === pos; }); }
 
@@ -1071,7 +1071,7 @@ function populateType2SingleMembers() {
   if (!sel) return;
   sel.innerHTML = '<option value="">請選擇特定成員...</option>';
   S.members.forEach(function(m) {
-    if (m.position !== '離團') {
+    if (m.position !== '離團' && m.position !== '無') {
       var dispName = m.naturalName || m.name; 
       sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + (m.familyName ? ' (' + m.familyName + ')' : '') + '</option>';
     }
