@@ -44,7 +44,8 @@ function getActivities() {
       status:      calc.status,
       statusLabel: calc.status,
       subLabel:    calc.subLabel,
-      isOpen:      calc.isOpen
+      isOpen:      calc.isOpen,
+      countStat:   r[7] === true || r[7] === 'TRUE' || r[7] === '是'  // col H：納入統計
     };
   });
 }
@@ -61,7 +62,8 @@ function saveActivity(data) {
     data.endDate   ? new Date(data.endDate)   : '',
     data.deadline  ? new Date(data.deadline)  : '',
     now,                                           // col F：建立/更新時間
-    data.openDate  ? new Date(data.openDate)  : '' // col G：開放報名日期
+    data.openDate  ? new Date(data.openDate)  : '', // col G：開放報名日期
+    data.countStat ? true : false                   // col H：納入統計
   ];
 
   if (data.id) {
@@ -261,4 +263,95 @@ function getActivityStats(activityId) {
 function testGetActivities() {
   var result = getActivities();
   Logger.log(JSON.stringify(result));
+}
+
+// ── 出缺席統計 API ─────────────────────────────────────────────
+// 統計每位成員在「納入統計」的活動中的出缺席次數
+// posFilter: 可傳入職位字串（如 '小蟻'）來篩選，空字串代表全部
+function getAttendanceStat(posFilter) {
+  posFilter = String(posFilter || '').trim();
+
+  // 只取納入統計的活動
+  var activities = getActivities().filter(function(a){ return a.countStat; });
+  if (!activities.length) return { activities: [], rows: [] };
+
+  var actIds = {};
+  activities.forEach(function(a){ actIds[a.id] = a.name; });
+
+  // 取得所有報名紀錄，只保留納入統計的活動
+  var sh   = getSheet(SHEET_RSVP);
+  var data = sh.getDataRange().getValues();
+  var rsvpRows = data.slice(1).filter(function(r){
+    return r[0] && actIds[String(r[1])] && r[4] !== '整體備註';
+  });
+
+  // 取得成員資料，套用職位篩選，排除離團與無
+  var members = getMembers().filter(function(m){
+    if (m.position === '離團') return false;
+    if (posFilter) {
+      // 「家長」「戶長」存在 role 欄，其餘（小蟻/小蜂/小鹿/小鷹）存在 position 欄
+      var parentRoles = ['家長', '戶長'];
+      if (parentRoles.indexOf(posFilter) !== -1) {
+        return m.role === posFilter;
+      }
+      return m.position === posFilter;
+    }
+    return true;
+  });
+
+  // 建立 memberId → 成員資料 的 map
+  var mMap = {};
+  members.forEach(function(m){ mMap[m.id] = m; });
+
+  // 統計每位成員在每個活動的狀態
+  // statMap[memberId][actId] = '出席' | '不出席' | '待確認' | '未報名'
+  var statMap = {};
+  members.forEach(function(m){
+    statMap[m.id] = {};
+    activities.forEach(function(a){ statMap[m.id][a.id] = '未報名'; });
+  });
+
+  rsvpRows.forEach(function(r){
+    var mid = String(r[3]);
+    var aid = String(r[1]);
+    if (statMap[mid] && statMap[mid][aid] !== undefined) {
+      statMap[mid][aid] = r[7] || '待確認';
+    }
+  });
+
+  // 整理輸出：每位成員一列
+  var rows = members.map(function(m){
+    var attend = 0, absent = 0, pending = 0, noRsvp = 0;
+    var actStats = activities.map(function(a){
+      var st = statMap[m.id][a.id];
+      if      (st === '出席')   attend++;
+      else if (st === '不出席') absent++;
+      else if (st === '未報名') noRsvp++;
+      else                      pending++;
+      return st;
+    });
+    return {
+      memberId:    m.id,
+      memberName:  m.naturalName || m.name,
+      familyName:  m.familyName,
+      troop:       m.troop,
+      squad:       m.squad,
+      position:    m.position,
+      attend:      attend,
+      absent:      absent,
+      pending:     pending,
+      noRsvp:      noRsvp,
+      total:       activities.length,
+      attendRate:  activities.length ? Math.round(attend / activities.length * 100) : 0,
+      actStats:    actStats   // 與 activities 陣列同順序，每項為狀態字串
+    };
+  });
+
+  // 預設依出席次數遞減排序
+  rows.sort(function(a, b){ return b.attend - a.attend; });
+
+  return {
+    activities: activities.map(function(a){ return { id: a.id, name: a.name, startDate: a.startDate }; }),
+    rows: rows
+  };
 }

@@ -116,6 +116,7 @@
       <button class="tab" onclick="showAdminTab('payacts')" id="atab-payacts">📋 收費活動</button>
       <button class="tab" onclick="showAdminTab('paycheck')" id="atab-paycheck">✅ 對帳管理</button>
       <button class="tab" onclick="showAdminTab('payreport')" id="atab-payreport">📊 收費報表</button>
+      <button class="tab" onclick="showAdminTab('attendstat')" id="atab-attendstat">📈 出缺席統計</button>
     </div>
 
     <div id="aTab-members">
@@ -207,6 +208,22 @@
         <select id="roster-squad" onchange="loadRoster()"><option value="">選擇小隊</option></select>
       </div>
       <div id="roster-content"><div class="empty">請選擇團別或小隊</div></div>
+    </div>
+
+    <div id="aTab-attendstat" style="display:none">
+      <div class="filter-bar" style="margin-bottom:16px">
+        <select id="attendstat-pos">
+          <option value="">所有職位</option>
+          <option value="小蟻">小蟻</option>
+          <option value="小蜂">小蜂</option>
+          <option value="小鹿">小鹿</option>
+          <option value="小鷹">小鷹</option>
+          <option value="家長">家長</option>
+        </select>
+        <button class="btn btn-green btn-sm" onclick="loadAttendStat()">查詢</button>
+        <button class="btn btn-outline btn-sm" onclick="exportAttendStat()">下載 Excel</button>
+      </div>
+      <div id="attendstat-content"><div class="empty">請按查詢載入統計資料</div></div>
     </div>
 
   </div>

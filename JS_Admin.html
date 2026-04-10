@@ -63,6 +63,7 @@ function setMenuByRole(role) {
   document.getElementById('atab-payacts').style.display = 'none';
   document.getElementById('atab-paycheck').style.display = 'none';
   document.getElementById('atab-payreport').style.display = 'none';
+  document.getElementById('atab-attendstat').style.display = 'none';
 
   // 2. 根據不同角色，把對應的選單打開 (display = 'block' 或是 'inline-block')
   if (role === 'admin') {
@@ -74,6 +75,7 @@ function setMenuByRole(role) {
     document.getElementById('atab-payacts').style.display = 'block';
     document.getElementById('atab-paycheck').style.display = 'block';
     document.getElementById('atab-payreport').style.display = 'block';
+    document.getElementById('atab-attendstat').style.display = 'block';
 
     document.getElementById('atab-members').click();
     
@@ -83,6 +85,7 @@ function setMenuByRole(role) {
     document.getElementById('atab-families').style.display = 'block';
     document.getElementById('atab-activities').style.display = 'block';
     document.getElementById('atab-roster').style.display = 'block';
+    document.getElementById('atab-attendstat').style.display = 'block';
 
     document.getElementById('atab-members').click();
     
@@ -104,16 +107,17 @@ function doLogout() {
 }
 
 function showAdminTab(name) {
-  ['members','families','activities','roster','payacts','paycheck','payreport'].forEach(function(t) {
+  ['members','families','activities','roster','payacts','paycheck','payreport','attendstat'].forEach(function(t) {
     var el = document.getElementById('aTab-' + t);
     if(el) el.style.display = t === name ? 'block' : 'none';
     var btn = document.getElementById('atab-' + t);
     if(btn) btn.classList.toggle('active', t === name);
   });
   // 已移除 act-stats-section 的顯示邏輯
-  if (name === 'roster' && typeof loadRoster === 'function') loadRoster();
-  if (name === 'payacts' && typeof loadPayActs === 'function') loadPayActs();
-  if (name === 'paycheck' && typeof loadPayCheck === 'function') loadPayCheck();
+  if (name === 'roster'      && typeof loadRoster      === 'function') loadRoster();
+  if (name === 'payacts'     && typeof loadPayActs      === 'function') loadPayActs();
+  if (name === 'paycheck'    && typeof loadPayCheck     === 'function') loadPayCheck();
+  if (name === 'attendstat'  && typeof loadAttendStat   === 'function') loadAttendStat();
 }
 
 function loadAdminData() {
@@ -398,7 +402,9 @@ function renderActivitiesAdminList() {
   el.innerHTML = S.activities.map(function(a) {
     return '<div class="act-card" style="cursor:default">' +
       '<div style="flex:1">' +
-        '<div class="act-name">' + esc(a.name) + '</div>' +
+        '<div class="act-name">' + esc(a.name) +
+          (a.countStat ? ' <span style="font-size:13px;background:var(--forest);color:#fff;border-radius:4px;padding:1px 7px;vertical-align:middle;margin-left:6px">📈 統計</span>' : '') +
+        '</div>' +
         '<div class="act-meta">' +
           (a.startDate ? '<span>開始 '     + a.startDate + '</span>' : '') +
           (a.endDate   ? '<span>結束 '     + a.endDate   + '</span>' : '') +
@@ -425,6 +431,7 @@ function openActivityModal() {
   document.getElementById('act-end').value      = '';
   document.getElementById('act-opendate').value = '';
   document.getElementById('act-deadline').value = '';
+  document.getElementById('act-countstat').checked = false;
   openModal('modal-activity');
 }
 
@@ -438,6 +445,7 @@ function editActivityById(aid) {
   document.getElementById('act-end').value      = a.endDate   ? a.endDate.split('/').join('-')   : '';
   document.getElementById('act-opendate').value = a.openDate  ? a.openDate.split('/').join('-')  : '';
   document.getElementById('act-deadline').value = a.deadline  ? a.deadline.split('/').join('-')  : '';
+  document.getElementById('act-countstat').checked = !!a.countStat;
   openModal('modal-activity');
 }
 
@@ -451,7 +459,8 @@ function saveActivity() {
     startDate: document.getElementById('act-start').value,
     endDate:   document.getElementById('act-end').value,
     openDate:  document.getElementById('act-opendate').value,
-    deadline:  document.getElementById('act-deadline').value
+    deadline:  document.getElementById('act-deadline').value,
+    countStat: document.getElementById('act-countstat').checked
     // ★ 不再傳 status
   };
 
@@ -751,5 +760,130 @@ function confirmImport() {
   // 啟動進度條並開始處理第一筆
   updateProgress();
   processNext(); 
+}
+
+// ── 出缺席統計 ──────────────────────────────────────────────────
+
+var _attendStatData = null; // 快取最後一次查詢結果，供匯出使用
+
+function loadAttendStat() {
+  var pos = document.getElementById('attendstat-pos').value;
+  var el  = document.getElementById('attendstat-content');
+  el.innerHTML = '<div class="loading"></div>';
+
+  gas('getAttendanceStat', pos).then(function(res) {
+    _attendStatData = res;
+    renderAttendStat(res);
+  }).catch(function() {
+    el.innerHTML = '<div class="empty">載入失敗，請重試</div>';
+  });
+}
+
+function renderAttendStat(res) {
+  var el = document.getElementById('attendstat-content');
+
+  if (!res || !res.activities || !res.activities.length) {
+    el.innerHTML = '<div class="empty">目前沒有「納入統計」的活動，請先在活動管理中勾選「納入出缺席統計」</div>';
+    return;
+  }
+  if (!res.rows || !res.rows.length) {
+    el.innerHTML = '<div class="empty">查無符合條件的成員</div>';
+    return;
+  }
+
+  var acts = res.activities;
+  var rows = res.rows;
+
+  // ── 表頭
+  var thActs = acts.map(function(a) {
+    return '<th style="min-width:70px;text-align:center;font-size:12px;padding:4px 6px">' +
+      esc(a.name) + (a.startDate ? '<br><span style="font-weight:400;opacity:.75">' + a.startDate + '</span>' : '') +
+    '</th>';
+  }).join('');
+
+  var thead =
+    '<tr>' +
+      '<th style="min-width:70px">姓名</th>' +
+      '<th style="min-width:60px">職位</th>' +
+      '<th style="min-width:50px">團別</th>' +
+      thActs +
+      '<th style="text-align:center">出席</th>' +
+      '<th style="text-align:center">缺席</th>' +
+      '<th style="text-align:center">待確認</th>' +
+      '<th style="text-align:center">未報名</th>' +
+      '<th style="text-align:center">出席率</th>' +
+    '</tr>';
+
+  // 狀態對應色彩
+  var stColor = {
+    '出席':   'background:#d4edda;color:#155724',
+    '不出席': 'background:#f8d7da;color:#721c24',
+    '待確認': 'background:#fff3cd;color:#856404',
+    '未報名': 'background:#e9ecef;color:#6c757d'
+  };
+  var stLabel = { '出席': '✔', '不出席': '✘', '待確認': '？', '未報名': '—' };
+
+  // ── 資料列
+  var tbody = rows.map(function(r) {
+    var actCells = r.actStats.map(function(st) {
+      var style = stColor[st] || 'background:#e9ecef;color:#6c757d';
+      return '<td style="text-align:center;' + style + ';font-weight:600;font-size:14px">' + (stLabel[st] || st) + '</td>';
+    }).join('');
+
+    var rateColor = r.attendRate >= 80 ? 'color:var(--forest);font-weight:700'
+                  : r.attendRate >= 50 ? 'color:#856404;font-weight:700'
+                  : 'color:#721c24;font-weight:700';
+
+    return '<tr>' +
+      '<td>' + esc(r.memberName) + '</td>' +
+      '<td style="font-size:13px">' + esc(r.position) + '</td>' +
+      '<td style="font-size:13px">' + esc(r.troop) + '</td>' +
+      actCells +
+      '<td style="text-align:center;font-weight:600">' + r.attend  + '</td>' +
+      '<td style="text-align:center">'                 + r.absent  + '</td>' +
+      '<td style="text-align:center">'                 + r.pending + '</td>' +
+      '<td style="text-align:center">'                 + r.noRsvp  + '</td>' +
+      '<td style="text-align:center;' + rateColor + '">' + r.attendRate + '%</td>' +
+    '</tr>';
+  }).join('');
+
+  // ── 圖例
+  var legend =
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;font-size:13px">' +
+      Object.keys(stColor).map(function(k) {
+        return '<span style="padding:2px 10px;border-radius:4px;' + stColor[k] + '">' + stLabel[k] + ' ' + k + '</span>';
+      }).join('') +
+      '<span style="padding:2px 10px;border-radius:4px;background:#f0f0f0;color:#333">共 ' + acts.length + ' 項活動 · ' + rows.length + ' 位成員</span>' +
+    '</div>';
+
+  el.innerHTML = legend +
+    '<div style="overflow-x:auto">' +
+      '<table class="data-table" style="min-width:100%;border-collapse:collapse;font-size:14px">' +
+        '<thead>' + thead + '</thead>' +
+        '<tbody>' + tbody + '</tbody>' +
+      '</table>' +
+    '</div>';
+}
+
+function exportAttendStat() {
+  if (!_attendStatData || !_attendStatData.rows || !_attendStatData.rows.length) {
+    toast('請先查詢統計資料', 'error'); return;
+  }
+  var res  = _attendStatData;
+  var acts = res.activities;
+  var rows = res.rows;
+
+  var header = ['姓名', '職位', '團別', '隊名'].concat(
+    acts.map(function(a){ return a.name + (a.startDate ? '(' + a.startDate + ')' : ''); })
+  ).concat(['出席次數', '缺席次數', '待確認', '未報名', '出席率(%)']);
+
+  var data = [header].concat(rows.map(function(r) {
+    return [r.memberName, r.position, r.troop, r.squad || ''].concat(r.actStats).concat([r.attend, r.absent, r.pending, r.noRsvp, r.attendRate]);
+  }));
+
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, '出缺席統計');
+  XLSX.writeFile(wb, '出缺席統計.xlsx');
 }
 </script>
