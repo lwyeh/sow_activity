@@ -3,25 +3,48 @@
 // ================================================================
 
 // ── ACTIVITIES API (活動管理) ───────────────────────────────────
+// ================================================================
+// Api_Activities.gs - 活動與報名統計 API
+// ================================================================
 
+// ── 狀態推導工具函式 ────────────────────────────────────────────
+function calcActivityStatus(openDate, deadline) {
+  var now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  if (deadline && deadline < now) {
+    return { status: '已結束',   subLabel: '已截止報名',   isOpen: false };
+  }
+  if (openDate && openDate > now) {
+    return { status: '暫停報名', subLabel: '尚未開放報名', isOpen: false };
+  }
+  return { status: '開放報名',   subLabel: '',             isOpen: true  };
+}
+
+// ── ACTIVITIES API ──────────────────────────────────────────────
 function getActivities() {
   var sh   = getSheet(SHEET_ACTIVITIES);
   var data = sh.getDataRange().getValues();
   if (data.length <= 1) return [];
-  var now = new Date();
-  
+
   return data.slice(1).filter(function(r){ return r[0]; }).map(function(r){
     var deadline = r[4] ? new Date(r[4]) : null;
-    var isOpen   = r[5] === '開放報名' && (!deadline || deadline >= now);
+    var openDate = r[6] ? new Date(r[6]) : null;  // col G：開放報名日期
+    var calc     = calcActivityStatus(openDate, deadline);
+
     return {
-      id:           String(r[0]),
-      name:         r[1],
-      startDate:    formatDate(r[2]),
-      endDate:      formatDate(r[3]),
-      deadline:     deadline ? formatDate(deadline) : '',
-      deadlineRaw:  deadline ? deadline.toISOString() : '',
-      status:       r[5],
-      isOpen:       isOpen
+      id:          String(r[0]),
+      name:        r[1],
+      startDate:   formatDate(r[2]),
+      endDate:     formatDate(r[3]),
+      deadline:    deadline ? formatDate(deadline) : '',
+      deadlineRaw: deadline ? deadline.toISOString() : '',
+      openDate:    openDate ? formatDate(openDate)  : '',
+      openDateRaw: openDate ? openDate.toISOString() : '',
+      status:      calc.status,
+      statusLabel: calc.status,
+      subLabel:    calc.subLabel,
+      isOpen:      calc.isOpen
     };
   });
 }
@@ -30,16 +53,17 @@ function saveActivity(data) {
   var sh  = getSheet(SHEET_ACTIVITIES);
   var id  = data.id ? String(data.id) : genId('A');
   var now = new Date();
+
   var row = [
     id,
     data.name,
     data.startDate ? new Date(data.startDate) : '',
     data.endDate   ? new Date(data.endDate)   : '',
     data.deadline  ? new Date(data.deadline)  : '',
-    data.status    || '開放報名',
-    now
+    now,                                           // col F：建立/更新時間
+    data.openDate  ? new Date(data.openDate)  : '' // col G：開放報名日期
   ];
-  
+
   if (data.id) {
     var idx = findRowIndex(sh, 0, data.id);
     if (idx > 0) {
@@ -50,6 +74,13 @@ function saveActivity(data) {
   var newRow = sh.getLastRow() + 1;
   sh.getRange(newRow, 1, 1, row.length).setValues([row]);
   return { success: true, id: id };
+}
+
+function deleteActivity(activityId) {
+  var sh  = getSheet(SHEET_ACTIVITIES);
+  var idx = findRowIndex(sh, 0, activityId);
+  if (idx > 0) sh.deleteRow(idx);
+  return { success: true };
 }
 
 function deleteActivity(activityId) {
@@ -225,4 +256,9 @@ function getActivityStats(activityId) {
     bySquad:  Object.values(bySquad),
     records:  records
   };
+}
+
+function testGetActivities() {
+  var result = getActivities();
+  Logger.log(JSON.stringify(result));
 }

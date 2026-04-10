@@ -107,6 +107,11 @@
         <label>入團日期</label>
         <input type="date" id="mem-join" style="width:100%">
       </div>
+      <div class="form-group">
+        <label>個人備註</label>
+        <textarea id="mem-remark" rows="3" placeholder="其他事項..."
+          style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+      </div>      
     </div>
     <div class="form-row four">
       <div class="form-group">
@@ -156,32 +161,29 @@
     <input type="hidden" id="act-id">
     <div class="form-group">
       <label>活動名稱 *</label>
-      <input id="act-name" placeholder="活動名稱">
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>開始日期</label>
-        <input id="act-start" type="date">
-      </div>
-      <div class="form-group">
-        <label>結束日期</label>
-        <input id="act-end" type="date">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>截止報名日期</label>
-        <input id="act-deadline" type="date">
-      </div>
-      <div class="form-group"></div>
+      <input type="text" id="act-name" placeholder="請輸入活動名稱">
     </div>
     <div class="form-group">
-      <label>狀態</label>
-      <select id="act-status">
-        <option value="開放報名">開放報名</option>
-        <option value="暫停報名">暫停報名</option>
-        <option value="已結束">已結束</option>
-      </select>
+      <label>活動開始日期</label>
+      <input type="date" id="act-start">
+    </div>
+    <div class="form-group">
+      <label>活動結束日期</label>
+      <input type="date" id="act-end">
+    </div>
+    <div class="form-group">
+      <label>開放報名日期</label>
+      <input type="date" id="act-opendate">
+      <div style="font-size:20px;color:var(--ink-soft);margin-top:3px">
+        未填寫則立即開放報名
+      </div>
+    </div>
+    <div class="form-group">
+      <label>截止報名日期</label>
+      <input type="date" id="act-deadline">
+      <div style="font-size:20px;color:var(--ink-soft);margin-top:3px">
+        未填寫則永不截止
+      </div>
     </div>
     <div class="flex-end mt-4">
       <button class="btn btn-outline" onclick="closeModal('modal-activity')">取消</button>
@@ -219,7 +221,7 @@
           <thead><tr>
             <th>#</th><th>家庭名稱</th><th>姓名</th><th>自然名</th><th>角色</th>
             <th>性別</th><th>團別</th><th>年級</th><th>職位</th><th>隊名</th>
-            <th>會員編號</th><th>出生年月日</th><th>入團日期</th><th>狀態</th>
+            <th>會員編號</th><th>出生年月日</th><th>入團日期</th><th>個人備註</th><th>狀態</th>
           </tr></thead>
           <tbody id="import-preview-body"></tbody>
         </table>
@@ -303,6 +305,20 @@
       <div class="form-group" style="margin-bottom:10px">
         <label>繳費說明（選填，將顯示於家長繳費頁）</label>
         <textarea id="payact-note" placeholder="例：請匯款至袋鼠銀行..." style="width:100%; min-height:80px; border:2px solid var(--line); border-radius:6px; padding:10px; font-size:18px; font-family:inherit; resize:vertical;"></textarea>
+      </div>
+      <div class="form-group">
+        <label>開放填選日期</label>
+        <input type="date" id="payact-opendate">
+        <div style="font-size:20px;color:var(--ink-soft);margin-top:3px">
+          未填寫則立即開放
+        </div>
+      </div>
+      <div class="form-group">
+        <label>截止填選日期</label>
+        <input type="date" id="payact-deadline">
+        <div style="font-size:20px;color:var(--ink-soft);margin-top:3px">
+          未填寫則永不截止
+        </div>
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label>允許的繳費方式 *（請勾選此活動接受的付款方式）</label>

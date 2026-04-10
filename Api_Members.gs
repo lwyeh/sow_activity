@@ -109,7 +109,8 @@ function getMembers() {
       // r[13] 是建立時間
       memberNo:    String(r[14] || ''), // 第15欄
       birthDate:   bDate,               // 第16欄
-      joinDate:    jDate                // 第17欄
+      joinDate:    jDate,               // 第17欄
+      remark:      String(r[17] || '')  // ★ 個人備註
     };
   });
 }
@@ -153,7 +154,8 @@ function saveMember(data) {
     now,
     String(data.memberNo || ''),
     bDate,
-    jDate
+    jDate,
+    String(data.remark || '')   // ★ 個人備註
   ];
 
   if (data.id) {

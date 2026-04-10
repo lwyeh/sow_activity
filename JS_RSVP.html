@@ -6,20 +6,31 @@ function renderActivityListRsvp() {
     el.innerHTML = '<div class="empty">目前沒有活動</div>';
     return;
   }
+
   el.innerHTML = S.activities.map(function(a) {
-    var closed = !a.isOpen;
-    return '<div class="act-card' + (closed ? ' closed' : '') + '" onclick="' + (closed ? '' : 'openRsvpSelect(\'' + a.id + '\')') + '">' +
+    var canClick = a.isOpen;
+    // 右側說明文字邏輯
+    var rightNote = '';
+    if (a.statusLabel === '已結束') {
+      rightNote = '<span style="font-size:22px;color:var(--ink-soft)">已截止報名</span>';
+    } else if (a.statusLabel === '暫停報名') {
+      rightNote = '<span style="font-size:22px;color:var(--ink-soft)">尚未開放報名</span>';
+    }
+
+    return '<div class="act-card' + (canClick ? '' : ' closed') + '" ' +
+        'onclick="' + (canClick ? 'openRsvpSelect(\'' + a.id + '\')' : '') + '">' +
       '<div>' +
         '<div class="act-name">' + esc(a.name) + '</div>' +
         '<div class="act-meta">' +
           (a.startDate ? '<span>開始 ' + a.startDate + '</span>' : '') +
           (a.endDate   ? '<span>結束 ' + a.endDate   + '</span>' : '') +
+          (a.openDate  ? '<span>開放報名 ' + a.openDate + '</span>' : '') +   // ★ 新欄位
           (a.deadline  ? '<span>截止報名 ' + a.deadline + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
-        '<span class="badge ' + (a.isOpen ? 'badge-open' : 'badge-closed') + '">' + a.status + '</span>' +
-        (closed ? '<span style="font-size:24px;color:var(--ink-soft)">已截止報名</span>' : '') +
+        '<span class="badge ' + (a.isOpen ? 'badge-open' : 'badge-closed') + '">' + a.statusLabel + '</span>' +
+        rightNote +
       '</div>' +
     '</div>';
   }).join('');

@@ -21,48 +21,73 @@
 
 // ── 收費活動 CRUD ─────────────────────────────────────────────
 
-// ── 儲存/更新收費活動 (修正欄位對應順序) ──
+// ── 儲存/更新收費活動 ──
 function savePayActivity(data) {
-  var sh = getSheet('收費活動'); 
+  var sh = getSheet('收費活動');
   var dataRange = sh.getDataRange().getValues();
-  // 將勾選的陣列轉為字串儲存，如 "現金,LinePay,轉帳"
   var methodsStr = (data.methods || []).join(',');
 
   if (data.id) {
     for (var i = 1; i < dataRange.length; i++) {
       if (String(dataRange[i][0]) === String(data.id)) {
         sh.getRange(i + 1, 2).setValue(data.name);
-        sh.getRange(i + 1, 3).setValue(data.note);  // ★ 修正：C 欄是 說明 (note)
-        sh.getRange(i + 1, 4).setValue(data.type);  // ★ 修正：D 欄是 類型 (type)
-        sh.getRange(i + 1, 6).setValue(methodsStr); // F 欄是 繳費方式
+        sh.getRange(i + 1, 3).setValue(data.note);
+        sh.getRange(i + 1, 4).setValue(data.type);
+        sh.getRange(i + 1, 6).setValue(methodsStr);
+        sh.getRange(i + 1, 7).setValue(data.openDate  ? new Date(data.openDate)  : ''); // ★ col G
+        sh.getRange(i + 1, 8).setValue(data.deadline  ? new Date(data.deadline)  : ''); // ★ col H
         return { id: data.id };
       }
     }
   } else {
     var newId = genId('PA');
     var now = new Date();
-    // ★ 修正 appendRow 順序：[ID, 名稱, 說明, 類型, 建立時間, 繳費方式]
-    sh.appendRow([newId, data.name, data.note, data.type, now, methodsStr]);
+    // [ID, 名稱, 說明, 類型, 建立時間, 繳費方式, 開放日期, 截止日期]
+    sh.appendRow([
+      newId,
+      data.name,
+      data.note,
+      data.type,
+      now,
+      methodsStr,
+      data.openDate ? new Date(data.openDate) : '',  // ★ col G
+      data.deadline ? new Date(data.deadline) : ''   // ★ col H
+    ]);
     return { id: newId };
   }
 }
 
-// ── 取得所有收費活動 (修正欄位對應順序) ──
+// ── 取得所有收費活動 ──
 function getPayActivities() {
-  var sh = getSheet('收費活動'); 
+  var sh = getSheet('收費活動');
   var data = sh.getDataRange().getValues();
   var res = [];
+
+  var now = new Date();
+  now.setHours(0, 0, 0, 0);
+
   for (var i = 1; i < data.length; i++) {
     if (!data[i][0]) continue;
-    // 讀取第 6 欄 (索引 5)，若為空則預設全開
+
     var methodsStr = data[i][5] ? String(data[i][5]) : '現金,LinePay,iPassMoney,轉帳,其他';
+    var openDate   = data[i][6] ? new Date(data[i][6]) : null;  // ★ col G
+    var deadline   = data[i][7] ? new Date(data[i][7]) : null;  // ★ col H
+
+    // 與報名活動相同的狀態推導邏輯
+    var calc = calcActivityStatus(openDate, deadline);
+
     res.push({
-      id: data[i][0],
-      name: data[i][1],
-      note: data[i][2], // ★ 修正：索引 2 (C欄) 是說明
-      type: data[i][3], // ★ 修正：索引 3 (D欄) 是類型
-      createdAt: Utilities.formatDate(new Date(data[i][4]), "GMT+8", "yyyy/MM/dd"),
-      methods: methodsStr.split(',')
+      id:          data[i][0],
+      name:        data[i][1],
+      note:        data[i][2],
+      type:        data[i][3],
+      createdAt:   Utilities.formatDate(new Date(data[i][4]), "GMT+8", "yyyy/MM/dd"),
+      methods:     methodsStr.split(','),
+      openDate:    openDate ? Utilities.formatDate(openDate, "GMT+8", "yyyy/MM/dd") : '',
+      deadline:    deadline ? Utilities.formatDate(deadline, "GMT+8", "yyyy/MM/dd") : '',
+      status:      calc.status,    // ★ 開放報名 / 暫停報名 / 已結束
+      subLabel:    calc.subLabel,  // ★ 尚未開放 / 已截止
+      isOpen:      calc.isOpen     // ★ 是否可操作
     });
   }
   return res;
@@ -332,6 +357,8 @@ function getPaySummaryByFamily(familyId) {
       actType:     act.type || 'type2',
       actNote:     act.note || '',   // ★ 請務必加上這一行！把說明文字傳給前端
       actMethods:  act.methods || ['現金','LinePay','iPassMoney','轉帳','其他'], // ★ 補上這行，把允許的付款方式傳給家長頁面
+      actStatus:   act.status  || '開放報名',  // ★
+      isOpen:      act.isOpen !== false,        // ★（預設 true 向下相容舊資料）
       familyId:    familyId,
       totalAmount: totalAmount,
       paidTotal:   paidTotal,
@@ -857,4 +884,24 @@ function testSendEmail() {
     body: "如果您收到這封信，代表寄信權限已經成功開啟囉！"
   });
   Logger.log("測試信件已發送");
+}
+
+function testGetPayActivities() {
+  var result = getPayActivities();
+  Logger.log(JSON.stringify(result));
+}
+
+function debugPayActs() {
+  var sh = getSheet('收費活動');
+  var data = sh.getDataRange().getValues();
+  
+  // 印出標題列（看欄位順序）
+  Logger.log('標題列: ' + JSON.stringify(data[0]));
+  
+  // 印出第一筆資料的每個欄位與索引
+  if (data.length > 1) {
+    data[1].forEach(function(val, idx) {
+      Logger.log('索引 ' + idx + ' (欄 ' + String.fromCharCode(65 + idx) + '): ' + val);
+    });
+  }
 }

@@ -180,6 +180,7 @@ function renderMembersList(list) {
           (m.grade ? '<span class="tag">' + m.grade + '</span>' : '') +
           (m.squad && m.squad !== '無' ? '<span class="tag">' + m.squad + '</span>' : '') +
           (m.position ? '<span class="tag">' + m.position + '</span>' : '') +
+          (m.remark ? '<div style="font-size:20px;color:var(--ink-soft);margin-top:4px">📝 ' + esc(m.remark) + '</div>' : '') +
         '</div>' +
       '</div>' +
       '<div style="display:flex;gap:6px">' +
@@ -227,6 +228,7 @@ function openMemberModal() {
     if (el) el.selectedIndex = 0;
   });
   document.getElementById('mem-role').value = '家長';
+  document.getElementById('mem-remark').value = '';
   openModal('modal-member');
 }
 
@@ -249,6 +251,7 @@ function editMemberById(mid) {
   setSelectValue('mem-grade',    m.grade);
   setSelectValue('mem-position', m.position);
   setSelectValue('mem-squad',    m.squad);
+  document.getElementById('mem-remark').value = m.remark || '';
   openModal('modal-member');
 }
 
@@ -275,7 +278,8 @@ function saveMember() {
     squad:       document.getElementById('mem-squad').value,
     memberNo:    document.getElementById('mem-no').value,
     birthDate:   document.getElementById('mem-birth').value.replace(/-/g, '/'),
-    joinDate:    document.getElementById('mem-join').value.replace(/-/g, '/')
+    joinDate:    document.getElementById('mem-join').value.replace(/-/g, '/'),
+    remark:      document.getElementById('mem-remark').value
   };
 
   // ★ 防連點機制：鎖定按鈕並更改文字
@@ -390,21 +394,23 @@ function deleteFamilyById(fid) {
 function renderActivitiesAdminList() {
   var el = document.getElementById('activities-admin-list');
   if (!S.activities.length) { el.innerHTML = '<div class="empty">尚無活動</div>'; return; }
+
   el.innerHTML = S.activities.map(function(a) {
     return '<div class="act-card" style="cursor:default">' +
       '<div style="flex:1">' +
         '<div class="act-name">' + esc(a.name) + '</div>' +
         '<div class="act-meta">' +
-          (a.startDate ? '<span>開始 ' + a.startDate + '</span>' : '') +
-          (a.endDate   ? '<span>結束 ' + a.endDate   + '</span>' : '') +
-          (a.deadline  ? '<span>截止報名 ' + a.deadline + '</span>' : '') +
+          (a.startDate ? '<span>開始 '     + a.startDate + '</span>' : '') +
+          (a.endDate   ? '<span>結束 '     + a.endDate   + '</span>' : '') +
+          (a.openDate  ? '<span>開放報名 ' + a.openDate  + '</span>' : '') +
+          (a.deadline  ? '<span>截止報名 ' + a.deadline  + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">' +
         '<span class="badge ' + (a.isOpen ? 'badge-open' : 'badge-closed') + '">' + a.status + '</span>' +
         '<div style="display:flex;gap:6px">' +
           '<button class="btn btn-outline btn-xs" data-aid="' + a.id + '" onclick="editActivityById(this.getAttribute(\'data-aid\'))">編輯</button>' +
-          '<button class="btn btn-danger btn-xs" data-aid="' + a.id + '" onclick="deleteActivityById(this.getAttribute(\'data-aid\'))">刪除</button>' +
+          '<button class="btn btn-danger btn-xs"  data-aid="' + a.id + '" onclick="deleteActivityById(this.getAttribute(\'data-aid\'))">刪除</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -417,8 +423,8 @@ function openActivityModal() {
   document.getElementById('act-name').value     = '';
   document.getElementById('act-start').value    = '';
   document.getElementById('act-end').value      = '';
+  document.getElementById('act-opendate').value = '';
   document.getElementById('act-deadline').value = '';
-  document.getElementById('act-status').value   = '開放報名';
   openModal('modal-activity');
 }
 
@@ -429,44 +435,38 @@ function editActivityById(aid) {
   document.getElementById('act-id').value       = a.id;
   document.getElementById('act-name').value     = a.name;
   document.getElementById('act-start').value    = a.startDate ? a.startDate.split('/').join('-') : '';
-  document.getElementById('act-end').value      = a.endDate   ? a.endDate.split('/').join('-') : '';
-  document.getElementById('act-deadline').value = a.deadline  ? a.deadline.split('/').join('-') : '';
-  document.getElementById('act-status').value   = a.status;
+  document.getElementById('act-end').value      = a.endDate   ? a.endDate.split('/').join('-')   : '';
+  document.getElementById('act-opendate').value = a.openDate  ? a.openDate.split('/').join('-')  : '';
+  document.getElementById('act-deadline').value = a.deadline  ? a.deadline.split('/').join('-')  : '';
   openModal('modal-activity');
 }
 
 function saveActivity() {
   var name = document.getElementById('act-name').value.trim();
   if (!name) { toast('請填寫活動名稱', 'error'); return; }
+
   var data = {
     id:        document.getElementById('act-id').value.trim() || null,
     name:      name,
     startDate: document.getElementById('act-start').value,
     endDate:   document.getElementById('act-end').value,
-    deadline:  document.getElementById('act-deadline').value,
-    status:    document.getElementById('act-status').value
+    openDate:  document.getElementById('act-opendate').value,
+    deadline:  document.getElementById('act-deadline').value
+    // ★ 不再傳 status
   };
 
-  // ★ 防連點：鎖定活動儲存按鈕
   var btn = document.getElementById('act-save-btn');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = '儲存中...';
-  }
+  if (btn) { btn.disabled = true; btn.textContent = '儲存中...'; }
 
   gas('saveActivity', data).then(function() {
     toast('儲存成功', 'success');
     closeModal('modal-activity');
     loadAdminData();
-    if(typeof renderActivityListRsvp === 'function') renderActivityListRsvp();
-  }).catch(function(){ 
-    toast('儲存失敗', 'error'); 
+    if (typeof renderActivityListRsvp === 'function') renderActivityListRsvp();
+  }).catch(function(){
+    toast('儲存失敗', 'error');
   }).finally(function() {
-    // ★ 恢復按鈕狀態
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '儲存';
-    }
+    if (btn) { btn.disabled = false; btn.textContent = '儲存'; }
   });
 }
 
@@ -486,8 +486,8 @@ function loadRoster() {
   var troop = document.getElementById('roster-troop').value;
   var squad = document.getElementById('roster-squad').value;
   var el    = document.getElementById('roster-content');
-  if (!troop && !squad) { el.innerHTML = '<div class="empty">請選擇團別或小隊</div>'; return; }
 
+  // ★ 移除原本「兩個都空就 return」的限制，改為顯示全部
   var filtered = S.members.filter(function(m) {
     if (m.position === '離團') return false;
     if (troop && m.troop !== troop) return false;
@@ -497,21 +497,24 @@ function loadRoster() {
 
   if (!filtered.length) { el.innerHTML = '<div class="empty">查無成員</div>'; return; }
 
-  el.innerHTML = '<div style="margin-bottom:12px;font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>' +
+  el.innerHTML =
+    '<div style="margin-bottom:12px;font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>' +
     '<div class="tbl-wrap"><table><thead><tr>' +
-    '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th><th>性別</th><th>團別</th><th>小隊</th><th>年級</th><th>職位</th>' +
+      '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th><th>性別</th>' +
+      '<th>團別</th><th>小隊</th><th>年級</th><th>職位</th><th>個人備註</th>' +
     '</tr></thead><tbody>' +
     filtered.map(function(m) {
       return '<tr>' +
-        '<td><strong>' + esc(m.name) + '</strong></td>' +
-        '<td>' + esc(m.naturalName||'') + '</td>' +
-        '<td>' + esc(m.familyName||'') + '</td>' +
-        '<td>' + esc(m.role||'') + '</td>' +
-        '<td>' + esc(m.gender||'') + '</td>' +
-        '<td>' + esc(m.troop||'') + '</td>' +
-        '<td>' + esc(m.squad||'') + '</td>' +
-        '<td>' + esc(m.grade||'') + '</td>' +
-        '<td>' + esc(m.position||'') + '</td>' +
+        '<td><strong>' + esc(m.name        || '') + '</strong></td>' +
+        '<td>'         + esc(m.naturalName || '') + '</td>' +
+        '<td>'         + esc(m.familyName  || '') + '</td>' +
+        '<td>'         + esc(m.role        || '') + '</td>' +
+        '<td>'         + esc(m.gender      || '') + '</td>' +
+        '<td>'         + esc(m.troop       || '') + '</td>' +
+        '<td>'         + esc(m.squad       || '') + '</td>' +
+        '<td>'         + esc(m.grade       || '') + '</td>' +
+        '<td>'         + esc(m.position    || '') + '</td>' +
+        '<td>'         + esc(m.remark      || '') + '</td>' +
       '</tr>';
     }).join('') +
     '</tbody></table></div>';
@@ -610,7 +613,7 @@ function parseImportData(rows) {
   
   var headers = rows[0].map(function(h){ return String(h||'').trim(); });
   var colMap = {};
-  ['家庭名稱', '姓名', '自然名', '角色', '性別', '電話', 'Email', '團別', '年級', '職位', '隊名', '會員編號', '出生年月日', '入團日期'].forEach(function(k) {
+  ['家庭名稱', '姓名', '自然名', '角色', '性別', '電話', 'Email', '團別', '年級', '職位', '隊名', '會員編號', '出生年月日', '入團日期', '個人備註'].forEach(function(k) {
     var idx = headers.indexOf(k);
     if (idx >= 0) colMap[k] = idx;
   });
@@ -664,7 +667,7 @@ function parseImportData(rows) {
   var tbody = document.getElementById('import-preview-body');
   tbody.innerHTML = importData.slice(0, 50).map(function(d, idx) {
     var stClr = d.status === 'OK' ? 'color:var(--forest)' : 'color:var(--red);font-weight:700';
-    return '<tr><td class="td-sm">' + (idx + 1) + '</td><td>' + esc(d['家庭名稱']) + '</td><td>' + esc(d['姓名']) + '</td><td>' + esc(d['自然名']) + '</td><td>' + esc(d['角色']) + '</td><td>' + esc(d['性別']) + '</td><td>' + esc(d['團別']) + '</td><td>' + esc(d['年級']) + '</td><td>' + esc(d['職位']) + '</td><td>' + esc(d['隊名']) + '</td><td>' + esc(d['會員編號']) + '</td><td>' + esc(d['出生年月日']) + '</td><td>' + esc(d['入團日期']) + '</td><td style="' + stClr + '">' + d.status + '</td></tr>';
+    return '<tr><td class="td-sm">' + (idx + 1) + '</td><td>' + esc(d['家庭名稱']) + '</td><td>' + esc(d['姓名']) + '</td><td>' + esc(d['自然名']) + '</td><td>' + esc(d['角色']) + '</td><td>' + esc(d['性別']) + '</td><td>' + esc(d['團別']) + '</td><td>' + esc(d['年級']) + '</td><td>' + esc(d['職位']) + '</td><td>' + esc(d['隊名']) + '</td><td>' + esc(d['會員編號']) + '</td><td>' + esc(d['出生年月日']) + '</td><td>' + esc(d['入團日期']) + '<td>' + esc(d['個人備註'] || '') + '</td>' + '</td><td style="' + stClr + '">' + d.status + '</td></tr>';
   }).join('');
 
   document.getElementById('import-step-upload').style.display = 'none';
@@ -722,7 +725,8 @@ function confirmImport() {
         squad: d['隊名'], 
         memberNo: d['會員編號'], 
         birthDate: d['出生年月日'], 
-        joinDate: d['入團日期'] 
+        joinDate: d['入團日期'],
+        remark: d['個人備註'] || ''
       });
     }).then(function() {
       // 這筆確實存入後，才推進進度

@@ -147,23 +147,28 @@ function loadPayItems(fid) {
         html += '</div>';
       }
 
-      // ── 操作按鈕區 ──
+      // ── 操作按鈕區（依 isOpen 判斷是否可操作）──
       var pendingTotal = 0;
       s.records.forEach(function(r) {
-        if (r.status === '已送出' || r.status === '待確認') {
-          pendingTotal += r.amount;
-        }
+        if (r.status === '已送出' || r.status === '待確認') pendingTotal += r.amount;
       });
       var realRemaining = Math.max(0, s.remaining - pendingTotal);
 
-      if (!isPaid || String(s.actType || '').trim().toLowerCase() === 'type1' || s.remaining < 0) {
+      // ★ 加入日期狀態說明文字
+      if (s.actStatus && s.actStatus !== '開放報名') {
+        var statusNote = s.actStatus === '已結束' ? '⛔ 已截止，無法填選' : '🕐 尚未開放填選';
+        html += '<div style="text-align:right;font-size:22px;color:var(--ink-soft);margin-top:6px">' + statusNote + '</div>';
+      }
+
+      // ★ 只有開放中才顯示操作按鈕
+      if (s.isOpen) {
         html += '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px">';
 
         if (String(s.actType || '').trim().toLowerCase() === 'type1') {
           var searchInput = document.getElementById('pay-family-search');
-          var currentSearchName = searchInput ? searchInput.value.trim() : "";
+          var currentSearchName = searchInput ? searchInput.value.trim() : '';
           var famMembers = (S.members || []).filter(function(m) {
-            var idMatch = String(m.familyId || '').trim() === String(fid || '').trim();
+            var idMatch   = String(m.familyId || '').trim() === String(fid || '').trim();
             var nameMatch = String(m.familyName || '').trim() === currentSearchName;
             return (idMatch || nameMatch) && (m.position || '') !== '離團';
           });
@@ -172,30 +177,27 @@ function loadPayItems(fid) {
             famMembers.forEach(function(m) {
               var dispName = m.naturalName || m.name || '成員';
               html += '<button class="btn btn-outline btn-xs" ' +
-                // ★ 這裡在最後面加了 , this 將按鈕元素本身傳過去
                 'onclick="openType1Selection(\'' + s.actId + '\',\'' + esc(s.actName) + '\',\'' + fid + '\',\'' + m.id + '\', this)">' +
                 esc(dispName) + '：選設備</button>';
             });
           } else {
-            html += '<button class="btn btn-outline btn-xs" style="color:var(--red); border-color:var(--red)" ' +
-              // ★ 這裡同樣加上 , this
+            html += '<button class="btn btn-outline btn-xs" style="color:var(--red);border-color:var(--red)" ' +
               'onclick="openType1Selection(\'' + s.actId + '\',\'' + esc(s.actName) + '\',\'' + fid + '\',\'\', this)">管理設備項目</button>';
           }
         }
 
-        // 分次繳費顯示
         if (realRemaining > 0) {
           html += '<button class="btn btn-primary btn-sm" ' +
             'onclick="openPaySubmit(\'' + s.actId + '\',\'' + esc(s.actName) + '\',' + realRemaining + ',\'' + fid + '\')">回報繳費</button>';
         }
 
-        // 待退款顯示 (限管理員)
         if (s.remaining < 0 && S.adminAuth) {
           html += '<button class="btn btn-green btn-sm" onclick="adminDirectRefund(\'' + s.actId + '\',\'' + fid + '\',' + s.remaining + ')">紀錄已退款</button>';
         }
 
         html += '</div>';
       }
+
       html += '</div>';
     });
     el.innerHTML = html;
@@ -279,15 +281,31 @@ function loadPayActs() {
     el.innerHTML = acts.map(function(a) {
       var typeLabel = a.type === 'type1'
         ? '<span class="badge badge-pending" style="font-size:20px">自選設備</span>'
-        : '<span class="badge badge-troop" style="font-size:20px">管理者指定</span>';
+        : '<span class="badge badge-troop"   style="font-size:20px">管理者指定</span>';
+
+      // ★ 新增：狀態 badge（與報名活動一致）
+      var statusBadge = a.isOpen
+        ? '<span class="badge badge-open"   style="font-size:20px">開放中</span>'
+        : (a.status === '已結束'
+            ? '<span class="badge badge-closed" style="font-size:20px">已截止</span>'
+            : '<span class="badge badge-closed" style="font-size:20px">尚未開放</span>');
+
+      // ★ 日期說明列
+      var dateMeta = '';
+      if (a.openDate)  dateMeta += '<span style="margin-right:10px">開放 ' + a.openDate + '</span>';
+      if (a.deadline)  dateMeta += '<span>截止 ' + a.deadline + '</span>';
+
       return '<div class="card flex-between" style="margin-bottom:10px">' +
         '<div>' +
-          '<div style="font-size:24px;font-weight:700">' + esc(a.name) + '　' + typeLabel + '</div>' +
-          '<div style="font-size:20px;color:var(--ink-soft)">建立：' + a.createdAt + '</div>' +
+          '<div style="font-size:24px;font-weight:700">' + esc(a.name) + '　' + typeLabel + '　' + statusBadge + '</div>' +
+          '<div style="font-size:20px;color:var(--ink-soft);margin-top:3px">' +
+            '建立：' + a.createdAt +
+            (dateMeta ? '　' + dateMeta : '') +
+          '</div>' +
         '</div>' +
         '<div style="display:flex;gap:8px">' +
           '<button class="btn btn-outline btn-sm" onclick="openEditPayAct(\'' + a.id + '\')">管理</button>' +
-          '<button class="btn btn-danger btn-sm" onclick="deletePayAct(\'' + a.id + '\')">刪除</button>' +
+          '<button class="btn btn-danger btn-sm"  onclick="deletePayAct(\'' + a.id + '\')">刪除</button>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -314,6 +332,8 @@ function choosePayActType(type) {
   document.getElementById('payact-modal-title').textContent = type === 'type1' ? '新增收費活動（自選設備）' : '新增收費活動（管理者指定）';
   document.getElementById('payact-name').value = ''; 
   document.getElementById('payact-note').value = '';
+  document.getElementById('payact-opendate').value = '';
+  document.getElementById('payact-deadline').value = '';
   
   // ★ 新增時，預設將所有繳費方式打勾
   var methodCbs = document.querySelectorAll('.payact-method-cb');
@@ -337,6 +357,8 @@ function openEditPayAct(actId) {
   document.getElementById('payact-modal-title').textContent = '管理收費活動：' + act.name;
   document.getElementById('payact-name').value = act.name;
   document.getElementById('payact-note').value = act.note || '';
+  document.getElementById('payact-opendate').value = act.openDate ? act.openDate.split('/').join('-') : '';
+  document.getElementById('payact-deadline').value = act.deadline ? act.deadline.split('/').join('-') : '';
 
   // ★ 編輯時，根據資料庫設定勾選對應的繳費方式
   var allowedMethods = act.methods || ['現金','LinePay','iPassMoney','轉帳','其他'];
@@ -379,7 +401,9 @@ function savePayActBasic() {
     name: name, 
     note: document.getElementById('payact-note').value.trim(), 
     type: _editPayActType,
-    methods: checkedMethods // ★ 傳送給後端儲存
+    methods: checkedMethods, // ★ 傳送給後端儲存
+    openDate: document.getElementById('payact-opendate').value,  // ★
+    deadline: document.getElementById('payact-deadline').value   // ★
   }).then(function(res) {
     _editPayActId = res.id; toast('活動已儲存，請繼續設定設備', 'success');
     btn.disabled = false; btn.textContent = '更新活動名稱/說明'; loadPayActs();
