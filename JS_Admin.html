@@ -519,11 +519,6 @@ function loadRoster() {
   var squad = document.getElementById('roster-squad').value;
   var el = document.getElementById('roster-content');
 
-  if (!troop && !squad) {
-    el.innerHTML = '<div class="empty">請選擇團別或小隊</div>';
-    return;
-  }
-
   var filtered = S.members.filter(function(m) {
     if (m.position === '離團') return false;
     if (troop && m.troop !== troop) return false;
@@ -540,6 +535,7 @@ function loadRoster() {
     ctrl.id = 'roster-mode-ctrl';
     ctrl.className = 'seg-ctrl';
     ctrl.style.cssText = 'margin-bottom:12px;display:flex;';
+    
     ctrl.innerHTML =
       '<button class="seg-btn active" data-mode="simple" onclick="setRosterMode(\'simple\')">簡易欄位</button>' +
       '<button class="seg-btn" data-mode="full" onclick="setRosterMode(\'full\')">完整欄位</button>';
@@ -562,11 +558,17 @@ function renderRosterContent() {
     return;
   }
 
-  var countHtml = '<div style="margin-bottom:12px;font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>';
+  //var countHtml = '<div style="margin-bottom:12px;font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>';
+
+  el.innerHTML = 
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+    '<div style="font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>' +
+    '<button class="btn btn-outline btn-sm" onclick="downloadRosterExcel()">📥 下載 Excel</button>' +
+    '</div>';
 
   if (rosterMode === 'simple') {
     // ── 簡易模式：原 9 欄 ────────────────────────────
-    el.innerHTML = countHtml +
+    el.innerHTML = el.innerHTML +
       '<div class="tbl-wrap"><table><thead><tr>' +
       '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th>' +
       '<th>性別</th><th>團別</th><th>小隊</th><th>年級</th><th>職位</th>' +
@@ -588,7 +590,7 @@ function renderRosterContent() {
 
   } else {
     // ── 完整模式：全欄（扣掉 id / familyId）─────────
-    el.innerHTML = countHtml +
+    el.innerHTML = el.innerHTML +
       '<div class="tbl-wrap"><table><thead><tr>' +
       '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th>' +
       '<th>性別</th><th>電話</th><th>Email</th>' +
@@ -618,6 +620,52 @@ function renderRosterContent() {
   }
 }
 
+function downloadRosterExcel() {
+  var troop = document.getElementById('roster-troop').value;
+  var squad = document.getElementById('roster-squad').value;
+
+  // ★ 核心修正：直接讀 rosterMode 變數，和畫面顯示的模式保持一致
+  var filtered = S._rosterFiltered || [];
+
+  if (!filtered.length) { toast('沒有資料可匯出', 'warn'); return; }
+
+  var header, rows;
+
+  if (rosterMode === 'full') {
+    // 完整欄位：對應 renderRosterContent 完整模式的欄位順序
+    header = ['姓名', '自然名', '家庭', '角色', '性別', '電話', 'Email',
+              '團別', '年級', '職位', '小隊', '會員編號', '出生日期', '入團日期', '個人備註'];
+    rows = filtered.map(function(m) {
+      return [
+        m.name,        m.naturalName || '',  m.familyName || '',
+        m.role || '',  m.gender || '',       m.phone || '',
+        m.email || '', m.troop || '',        m.grade || '',
+        m.position || '', m.squad || '',     m.memberNo || '',
+        m.birthDate || '', m.joinDate || '', m.note || ''
+      ];
+    });
+  } else {
+    // 簡易欄位：對應 renderRosterContent 簡易模式的欄位順序
+    header = ['姓名', '自然名', '家庭', '角色', '性別', '團別', '小隊', '年級', '職位'];
+    rows = filtered.map(function(m) {
+      return [
+        m.name,        m.naturalName || '',  m.familyName || '',
+        m.role || '',  m.gender || '',       m.troop || '',
+        m.squad || '', m.grade || '',        m.position || ''
+      ];
+    });
+  }
+
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
+  XLSX.utils.book_append_sheet(wb, ws, '名冊');
+
+  var troopLabel = troop || '所有團別';
+  var squadLabel = squad ? ('_' + squad) : '';
+  var modeLabel = rosterMode === 'full' ? '_完整' : '_簡易';
+  XLSX.writeFile(wb, troopLabel + squadLabel + modeLabel + '_名冊.xlsx');
+  toast('下載成功', 'success');
+}
 
 function openUpgradeModal() {
   document.getElementById('upgrade-list').innerHTML = '<div class="loading"></div>';
