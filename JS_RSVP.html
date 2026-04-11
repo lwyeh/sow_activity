@@ -588,66 +588,87 @@ if (groupKey === 'family') {
         html += renderSquadBlock('🐥 小鷹', sortByPosition(eagleKids, posRule.squads), '#6aab8e', 4);
         html += '</div>';
       } else if (r.name === '育') {
-        var regSquads = squadsOfTroop; // 常規小隊：['花叢小隊','天空小隊','草原小隊','大地小隊']
-        
-        // 準備分類容器
-        var staffMembers = [];
-        var regSquadMembers = {};
-        regSquads.forEach(function(sq) { regSquadMembers[sq] = []; });
-        var eagleIkuMembers = [];
-        var deerIkuMembers = [];
-        var littleAntMembers = [];
+        var regSquads = squadsOfTroop; // ['花叢小隊','天空小隊','草原小隊','大地小隊']
 
-        // 精準分流每個成員
+        // 準備分類容器
+        var staffMembers = [];       // 第一排：幹部（職位含「會長」）
+        var regSquadMembers = {};    // 第二排：四個小隊
+        regSquads.forEach(function(sq) { regSquadMembers[sq] = []; });
+        var eagleIkuMembers = [];   // 第三排左：鷹育
+        var deerIkuMembers = [];    // 第三排右：鹿育
+        var littleAntMembers = [];  // 第四排：小小蟻
+
+        // 精準分流每個成員（職位為「無」的跳過）
         merged.forEach(function(m) {
-          var sq = m.squad || '無';
+          var sq = m.squad || '';
           var pos = m.position || '';
-          
-          if (pos === '小小蟻') {
+
+          // ★ 職位為「無」：不顯示、不統計
+          if (pos === '無') {
+            return;
+          }
+
+          // 第一排：職位包含「會長」
+          if (pos.indexOf('會長') !== -1) {
+            staffMembers.push(m);
+
+          // 第四排：隊名為「小小蟻」
+          } else if (sq === '小小蟻') {
             littleAntMembers.push(m);
-          } else if (pos === '鷹育' || sq === '鷹育') {
+
+          // 第三排左：隊名為「鷹育」
+          } else if (sq === '鷹育') {
             eagleIkuMembers.push(m);
-          } else if (pos === '鹿育' || sq === '鹿育') {
+
+          // 第三排右：隊名為「鹿育」
+          } else if (sq === '鹿育') {
             deerIkuMembers.push(m);
+
+          // 第二排：四個小隊
           } else if (regSquads.indexOf(sq) >= 0) {
             regSquadMembers[sq].push(m);
+
+          // 不屬於以上任何分類
           } else {
-            // 剩下的（包含隊名為無，且職位不為鹿育/鷹育/小小蟻）全部歸為幹部
-            staffMembers.push(m);
+            console.log('[育成會] 找不到分類的成員：', m.naturalName || m.name, '| 隊名：', sq, '| 職位：', pos);
           }
         });
 
         // ==========================================
-        // 第 1 排：幹部區塊 (依照職位排序，每排最多 4 人)
+        // 第 1 排：幹部區塊（職位含會長，每排最多 4 人）
         // ==========================================
         html += renderStaffRow(sortByPosition(staffMembers, posRule.staff), 4);
-        
+
         // ==========================================
-        // 第 2 排：常規小隊區塊 (並排顯示)
+        // 第 2 排：常規小隊（四個小隊並排，每個小隊每排最多 1 人）
         // ==========================================
         html += '<div style="display:flex;gap:8px;width:100%;margin-bottom:8px">';
         regSquads.forEach(function(sq, i) {
           var dispSq = SQUAD_EMOJI[sq] || sq;
-          html += '<div style="flex:1;min-width:120px">' + renderSquadBlock(dispSq, sortByPosition(regSquadMembers[sq], posRule.squads), sqColors[i % sqColors.length]) + '</div>';
+          html += '<div style="flex:1;min-width:120px">' + renderSquadBlock(dispSq, sortByPosition(regSquadMembers[sq], posRule.squads), sqColors[i % sqColors.length], 1) + '</div>';
         });
         html += '</div>';
 
         // ==========================================
-        // 第 3 排：鷹育 與 鹿育 (並排顯示，每排最多 2 人)
+        // 第 3 排：鷹育（左）與 鹿育（右），並排，每排最多 2 人
         // ==========================================
         if (eagleIkuMembers.length > 0 || deerIkuMembers.length > 0) {
           html += '<div style="display:flex;gap:8px;width:100%;margin-bottom:8px">';
+          html += '<div style="flex:1;min-width:120px">';
           if (eagleIkuMembers.length > 0) {
-            html += '<div style="flex:1;min-width:120px">' + renderSquadBlock('🦅 鷹育', sortByPosition(eagleIkuMembers, posRule.squads), '#7a8a9e', 2) + '</div>';
+            html += renderSquadBlock('🦅 鷹育', sortByPosition(eagleIkuMembers, posRule.squads), '#7a8a9e', 2);
           }
+          html += '</div>';
+          html += '<div style="flex:1;min-width:120px">';
           if (deerIkuMembers.length > 0) {
-            html += '<div style="flex:1;min-width:120px">' + renderSquadBlock('🦌 鹿育', sortByPosition(deerIkuMembers, posRule.squads), '#8a7a9e', 2) + '</div>';
+            html += renderSquadBlock('🦌 鹿育', sortByPosition(deerIkuMembers, posRule.squads), '#8a7a9e', 2);
           }
+          html += '</div>';
           html += '</div>';
         }
 
         // ==========================================
-        // 第 4 排：小小蟻 (獨立區塊，每排最多 4 人)
+        // 第 4 排：小小蟻（每排最多 4 人）
         // ==========================================
         if (littleAntMembers.length > 0) {
           html += '<div style="width:100%">' + renderSquadBlock('🐜 小小蟻', sortByPosition(littleAntMembers, posRule.squads), '#d4a373', 4) + '</div>';
