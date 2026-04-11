@@ -93,14 +93,17 @@ function repairMissingFamilies() {
 
 // ── 1. 取得成員資料 (加上防呆與新欄位) ──
 function getMembers() {
-  var sh   = getSheet(SHEET_MEMBERS);
+  var sh = getSheet(SHEET_MEMBERS);
   var data = sh.getDataRange().getValues();
   if (data.length <= 1) return [];
 
-  return data.slice(1).filter(function(r){ return r[0]; }).map(function(r){
-    // 日期防呆，確保傳給前端的是字串
-    var bDate = r[15] instanceof Date ? Utilities.formatDate(r[15], "GMT+8", "yyyy/MM/dd") : String(r[15] || '');
-    var jDate = r[16] instanceof Date ? Utilities.formatDate(r[16], "GMT+8", "yyyy/MM/dd") : String(r[16] || '');
+  return data.slice(1).filter(function(r){ return r[0]; }).map(function(r) {
+    var bDate = r[15] instanceof Date
+      ? Utilities.formatDate(r[15], "GMT+8", "yyyy/MM/dd")
+      : String(r[15] || '');
+    var jDate = r[16] instanceof Date
+      ? Utilities.formatDate(r[16], "GMT+8", "yyyy/MM/dd")
+      : String(r[16] || '');
 
     return {
       id:          String(r[0]),
@@ -116,11 +119,11 @@ function getMembers() {
       grade:       r[10],
       position:    r[11],
       squad:       r[12],
-      // r[13] 是建立時間
-      memberNo:    String(r[14] || ''), // 第15欄
-      birthDate:   bDate,               // 第16欄
-      joinDate:    jDate,               // 第17欄
-      remark:      String(r[17] || '')  // ★ 個人備註
+      // r[13] = updatedAt（建立時間，不傳給前端）
+      memberNo:    String(r[14] || ''),
+      birthDate:   bDate,
+      joinDate:    jDate,
+      note:        String(r[17] || '')   // ★ 新增：第 18 欄
     };
   });
 }
@@ -139,46 +142,50 @@ function getMembersByTroop(troop) {
 
 // ── 2. 儲存成員資料 (支援新欄位存檔) ──
 function saveMember(data) {
-  var sh  = getSheet(SHEET_MEMBERS);
+  var sh = getSheet(SHEET_MEMBERS);
   var id  = data.id ? String(data.id) : genId('M');
   var now = new Date();
-  
-  // 日期防呆
-  var bDate = data.birthDate instanceof Date ? Utilities.formatDate(data.birthDate, "GMT+8", "yyyy/MM/dd") : String(data.birthDate || '');
-  var jDate = data.joinDate instanceof Date ? Utilities.formatDate(data.joinDate, "GMT+8", "yyyy/MM/dd") : String(data.joinDate || '');
+
+  var bDate = data.birthDate instanceof Date
+    ? Utilities.formatDate(data.birthDate, "GMT+8", "yyyy/MM/dd")
+    : String(data.birthDate || '');
+  var jDate = data.joinDate instanceof Date
+    ? Utilities.formatDate(data.joinDate, "GMT+8", "yyyy/MM/dd")
+    : String(data.joinDate || '');
 
   var row = [
-    id,
-    String(data.familyId || ''),
-    data.familyName  || '',
-    data.name        || '',
-    data.naturalName || '',
-    data.gender      || '',
-    data.role        || '',
-    data.phone       || '',
-    data.email       || '',
-    data.troop       || '',
-    data.grade       || '',
-    data.position    || '',
-    data.squad       || '',
-    now,
-    String(data.memberNo || ''),
-    bDate,
-    jDate,
-    String(data.remark || '')   // ★ 個人備註
+    id,                          // col 1
+    String(data.familyId || ''), // col 2
+    data.familyName  || '',      // col 3
+    data.name        || '',      // col 4
+    data.naturalName || '',      // col 5
+    data.gender      || '',      // col 6
+    data.role        || '',      // col 7
+    data.phone       || '',      // col 8
+    data.email       || '',      // col 9
+    data.troop       || '',      // col 10
+    data.grade       || '',      // col 11
+    data.position    || '',      // col 12
+    data.squad       || '',      // col 13
+    now,                         // col 14 = updatedAt
+    String(data.memberNo || ''), // col 15
+    bDate,                       // col 16
+    jDate,                       // col 17
+    data.note        || ''       // col 18 ★ 新增
   ];
 
   if (data.id) {
     var idx = findRowIndex(sh, 0, data.id);
     if (idx > 0) {
-      sh.getRange(idx, 8, 1, 1).setNumberFormat('@'); // 電話純文字
+      sh.getRange(idx, 8, 1, 1).setNumberFormat('@');  // 電話純文字
       sh.getRange(idx, 1, 1, row.length).setValues([row]);
       return { success: true, id: id };
     }
   }
+
   var newRow = sh.getLastRow() + 1;
   sh.getRange(newRow, 1, 1, row.length).setValues([row]);
-  sh.getRange(newRow, 8, 1, 1).setNumberFormat('@'); 
+  sh.getRange(newRow, 8, 1, 1).setNumberFormat('@');
   return { success: true, id: id };
 }
 

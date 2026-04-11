@@ -204,8 +204,8 @@
     <div id="import-step-upload">
       <div style="background:var(--mist);border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:26px;line-height:1.8;color:var(--ink-soft)">
         <strong style="color:var(--forest)">Excel 格式要求：</strong>第1列為欄位標題，第2列可為說明列（自動略過），資料從第3列開始。<br>
-        必填欄位：<strong>家庭名稱、姓名、角色</strong>（家長／孩子）。
-        其餘欄位選填：自然名、性別、電話、Email、團別、年級、職位、隊名。<br>
+        必填欄位：<strong>家庭名稱、姓名、自然名、角色</strong>（家長／孩子）。
+        其餘欄位選填：性別、電話、Email、團別、年級、職位、隊名。<br>
         若家庭名稱在系統中不存在，匯入時將自動建立新家庭。
       </div>
       <div id="import-drop-zone" style="border:2.5px dashed var(--forest-lt);border-radius:10px;padding:36px 20px;text-align:center;cursor:pointer;transition:background .18s;background:var(--cream)" onclick="document.getElementById('import-file-input').click()" ondragover="event.preventDefault();this.style.background='var(--mist)'" ondragleave="this.style.background='var(--cream)'" ondrop="handleImportDrop(event)">

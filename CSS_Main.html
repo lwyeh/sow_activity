@@ -194,273 +194,94 @@ tr:hover td{background:#fafcfb}
 }
 
 
-/* =====================================================
-   [共通 1 & 2] 表格區塊：顯眼捲軸 + 凍結表頭 + 固定高度
+/* ═══════════════════════════════════════════════════
+   [1] 所有 .tbl-wrap 表格：
+       - 固定高度 → 讓水平 + 垂直捲軸都出現
+       - 綠色系捲軸 → 一眼就看得到
+       - th sticky → 往下捲時表頭不消失
 
-   做法：
-   - .tbl-wrap 給固定最大高度 + overflow:auto（兩個方向）
-   - th 設 position:sticky; top:0 → 往下捲時標題列留在頂部
-   - 使用 scrollbar-width + color 讓捲軸在各裝置上都顯眼
-===================================================== */
+   根本原因：之前 .card / #stats-content 設了
+   overflow:visible，但 Chrome 的 sticky + overflow
+   有個規範：只要任一祖先有 overflow 非 visible，
+   sticky 就會失效。
+   解法：把 sticky 改放在 .tbl-wrap 裡面（已有
+   overflow:auto），這樣 sticky 的基準就是 .tbl-wrap
+   本身，不受外層影響。
+   ═══════════════════════════════════════════════════ */
+
 .tbl-wrap {
   overflow-x: auto !important;
   overflow-y: auto !important;
-  max-height: 65vh !important;       /* 固定高度，讓捲軸出現 */
-  -webkit-overflow-scrolling: touch;
-  box-sizing: border-box;
+  max-height: 60vh !important;
   width: 100%;
-  border: 1px solid var(--line);
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
   border-radius: 6px;
-  /* 強制顯示捲軸（細但可見） */
-  scrollbar-width: thin;
-  scrollbar-color: #8ab49a #e8f2eb;  /* thumb / track */
-}
-
-/* Webkit（Chrome / Safari / Edge）捲軸美化 */
-.tbl-wrap::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.tbl-wrap::-webkit-scrollbar-track {
-  background: #e8f2eb;
-  border-radius: 4px;
-}
-.tbl-wrap::-webkit-scrollbar-thumb {
-  background: #6aab8e;
-  border-radius: 4px;
-}
-.tbl-wrap::-webkit-scrollbar-thumb:hover {
-  background: #3d7a52;
-}
-/* 右下角的角落方塊 */
-.tbl-wrap::-webkit-scrollbar-corner {
-  background: #e8f2eb;
-}
-
-/* 凍結表頭：往下捲時欄位標題永遠可見 */
-.tbl-wrap th {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 10 !important;
-  background: var(--mist) !important;  /* 蓋住下方的資料列 */
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-}
-
-/* 確保表格本身有足夠的最小寬度，讓水平捲動有意義 */
-.tbl-wrap table {
-  min-width: 600px;
-  width: 100%;
-}
-
-/* =====================================================
-   [共通 3] 修正：role 選單權限控制
-   
-   根本原因：上一版補丁用了
-     .tab-bar .tab { display: inline-flex !important }
-   這把 setMenuByRole() 的 display:'none' 也覆蓋掉了，
-   造成所有角色都看到全部選單。
-
-   修正做法：
-   - 拿掉強制 display:inline-flex 的規則
-   - 改為只在「已有 display 值（非 none）時」才套用 inline-flex
-   - 用 :not([style*="display: none"]) 精準排除被隱藏的按鈕
-===================================================== */
-
-/* 只對「沒有被 JS 設成 display:none 的」tab 套用 inline-flex */
-.tab-bar .tab:not([style*="display: none"]):not([style*="display:none"]) {
-  display: inline-flex !important;
-  align-items: center;
-}
-
-/* =====================================================
-   [電腦版 1] 管理後台選單不換行
-
-   問題：.tab-bar 沒有設 flex-wrap:nowrap，
-   所以當選單項目太多時會自動換到下一行。
-
-   修正：強制單行 + 允許水平捲動
-===================================================== */
-.tab-bar {
-  display: flex !important;
-  flex-wrap: nowrap !important;       /* 絕對不換行 */
-  overflow-x: auto !important;
-  overflow-y: visible !important;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 6px !important;     /* 留空間給捲軸 */
-  gap: 2px;
-  /* 捲軸細但可見 */
-  scrollbar-width: thin;
-  scrollbar-color: #aaa transparent;
-}
-.tab-bar::-webkit-scrollbar {
-  height: 4px;
-}
-.tab-bar::-webkit-scrollbar-thumb {
-  background: #bbb;
-  border-radius: 4px;
-}
-
-/* 選單按鈕不能被壓縮、文字不能換行 */
-.tab-bar .tab {
-  flex-shrink: 0 !important;
-  white-space: nowrap !important;
-  min-width: max-content !important;
-}
-
-/* =====================================================
-   [手機版 1] Logo 不超出畫面
-
-   問題：.logo 在小螢幕時寬度超出 header，
-   把 header-nav 擠到畫面右邊之外。
-
-   修正：
-   - .site-header 設 overflow:hidden
-   - .logo 設最大寬度與文字截斷
-   - .header-nav 設 flex-shrink:1 允許在必要時收縮
-===================================================== */
-@media (max-width: 768px) {
-
-  .site-header {
-    overflow: hidden;
-    padding: 0 10px !important;
-    gap: 6px;
-  }
-
-  /* Logo：固定寬度，超出的文字截斷顯示 */
-  .logo {
-    flex-shrink: 0;
-    max-width: 150px;    /* 約容納「竹三親子團」+「荒野」的寬度 */
-    min-width: 0;
-    gap: 6px;
-    font-size: 20px !important;
-    overflow: hidden;
-  }
-
-  .logo > span:first-child {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 90px;
-    display: inline-block;
-    vertical-align: middle;
-  }
-
-  .logo-badge {
-    flex-shrink: 0;
-    font-size: 18px !important;
-    padding: 2px 6px !important;
-  }
-
-  /* 導覽列：允許水平捲動，捲軸隱藏（滑動操作） */
-  .header-nav {
-    flex-shrink: 1;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;  /* 手機版不顯示捲軸，用滑動操作 */
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 2px;
-  }
-  .header-nav::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* 導覽按鈕縮小 */
-  .header-nav .nav-btn {
-    flex-shrink: 0;
-    font-size: 13px !important;
-    padding: 5px 7px !important;
-    white-space: nowrap !important;
-  }
-
-  /* 手機版表格：高度稍微縮短，以便頁面其他內容仍可見 */
-  .tbl-wrap {
-    max-height: 50vh !important;
-  }
-}
-
-
-/* ╔═══════════════════════════════════════════════════╗
-   ║ [A] 表格：顯眼捲軸 + 凍結表頭                      ║
-   ║                                                   ║
-   ║ 問題根源：                                         ║
-   ║  1. .tbl-wrap 沒有 max-height，捲軸跑到頁面最底部   ║
-   ║  2. th 沒有 sticky，往下捲時表頭消失               ║
-   ║  3. 捲軸顏色太淡，視覺上看不出來有東西              ║
-   ╚═══════════════════════════════════════════════════╝ */
-
-/* 確保 .tbl-wrap 的父元素不截斷捲軸 */
-.card,
-#aTab-roster,
-#aTab-payreport,
-#stats-content,
-#view-content {
-  overflow: visible !important;
-}
-
-.tbl-wrap {
-  display: block !important;         /* 確保是 block，不被其他規則改掉 */
-  overflow-x: auto !important;
-  overflow-y: auto !important;
-  max-height: 62vh !important;       /* 固定高度→讓垂直捲軸出現 */
-  width: 100%;
-  box-sizing: border-box;
-  -webkit-overflow-scrolling: touch;
-  /* 捲軸：綠色系、粗細適中、一定看得到 */
+  border: 1px solid var(--line);
+  /* 捲軸：綠色系，一定看得到 */
   scrollbar-width: thin;
   scrollbar-color: #5a9a7e #ddf0e6;
 }
 
-/* Chrome / Safari / Edge 捲軸 */
+/* Chrome / Safari / Edge */
 .tbl-wrap::-webkit-scrollbar        { width: 8px; height: 8px; }
 .tbl-wrap::-webkit-scrollbar-track  { background: #ddf0e6; border-radius: 4px; }
 .tbl-wrap::-webkit-scrollbar-thumb  { background: #5a9a7e; border-radius: 4px; border: 1px solid #ddf0e6; }
 .tbl-wrap::-webkit-scrollbar-thumb:hover { background: #3d7a52; }
 .tbl-wrap::-webkit-scrollbar-corner { background: #ddf0e6; }
 
-/* 凍結表頭：往下捲時欄位標題永遠可見 */
-.tbl-wrap thead th,
+/* 凍結表頭：
+   sticky 的 containing block 就是最近的 overflow:auto 祖先
+   → 也就是 .tbl-wrap 本身，所以 top:0 就是貼著 .tbl-wrap 頂部 */
 .tbl-wrap th {
   position: sticky !important;
   top: 0 !important;
-  z-index: 10 !important;
+  z-index: 2 !important;               /* 不要太高，只需蓋過 td */
   background: var(--mist) !important;
   box-shadow: 0 2px 3px rgba(0,0,0,0.1);
 }
 
-/* 表格最小寬度（讓水平捲軸有意義） */
 .tbl-wrap table {
   min-width: 600px;
   width: 100%;
+  border-collapse: collapse;
 }
 
-/* ╔═══════════════════════════════════════════════════╗
-   ║ [B] role 選單權限控制不被 CSS 干擾                  ║
-   ║                                                   ║
-   ║ 問題根源：                                         ║
-   ║  之前的補丁對 .tab 用了 display:inline-flex !important║
-   ║  把 JS setMenuByRole() 設的 display:'none' 覆蓋掉了 ║
-   ║                                                   ║
-   ║ 修正：用 :not 選擇器跳過被 JS 隱藏的元素           ║
-   ╚═══════════════════════════════════════════════════╝ */
+/* ★ 關鍵修正：取消對 .card / #stats-content 設 overflow:visible
+   的舊規則。這些容器不需要特別設定，讓它們保持預設 overflow 即可。
+   （舊版補丁錯誤地把它們設成 overflow:visible，干擾了捲軸顯示）*/
+.card {
+  overflow: unset;   /* 恢復瀏覽器預設，不強制任何值 */
+}
+#stats-content,
+#view-content,
+#aTab-roster,
+#aTab-payreport {
+  overflow: unset;
+}
 
-/* 只對「JS 沒有設 display:none 的」按鈕才套用 inline-flex */
+/* ═══════════════════════════════════════════════════
+   [2] role 選單只顯示對應權限
+   
+   JS setMenuByRole() 用 element.style.display = 'none' 隱藏按鈕。
+   CSS 若直接對 .tab 設 display !important 會把 none 覆蓋掉。
+   
+   解法：只對「沒被 JS 設成 display:none」的 tab 套用 inline-flex。
+   ═══════════════════════════════════════════════════ */
+
 .tab-bar .tab:not([style*="display: none"]):not([style*="display:none"]) {
   display: inline-flex !important;
   align-items: center;
   gap: 3px;
 }
 
-/* ╔═══════════════════════════════════════════════════╗
-   ║ [C] 管理後台選單不換行（電腦版）                    ║
-   ║                                                   ║
-   ║ 問題根源：.tab-bar 預設 flex 但允許換行             ║
-   ╚═══════════════════════════════════════════════════╝ */
+/* ═══════════════════════════════════════════════════
+   [3] 管理後台選單不換行（電腦版）
+   ═══════════════════════════════════════════════════ */
 
 .tab-bar {
   display: flex !important;
-  flex-wrap: nowrap !important;        /* 強制單行 */
+  flex-wrap: nowrap !important;
   overflow-x: auto !important;
   overflow-y: visible !important;
   -webkit-overflow-scrolling: touch;
@@ -478,48 +299,34 @@ tr:hover td{background:#fafcfb}
   min-width: max-content !important;
 }
 
-/* ╔═══════════════════════════════════════════════════╗
-   ║ [D+E] 手機版：Logo + 四小隊                        ║
-   ╚═══════════════════════════════════════════════════╝ */
+/* ═══════════════════════════════════════════════════
+   [4] 手機版 Logo + 導覽列
+   [5] 手機版四小隊並排不超出右邊
+   ═══════════════════════════════════════════════════ */
 
 @media (max-width: 768px) {
 
-  /* --- Header 整體 --- */
+  /* --- Header --- */
   .site-header {
     padding: 0 8px !important;
     gap: 4px;
     overflow: hidden;
   }
 
-  /* --- [D] Logo：讓「竹三親子團」和「荒野」都能完整顯示 ---
-     
-     問題根源：max-width 太窄（90px）導致「竹三親子團」被截成「竹三親…」
-     
-     修正：
-     - 拿掉 text-overflow:ellipsis（不截斷）
-     - 改讓整個 .logo 縮小字體，讓 6 個字 + badge 都能放下
-     - 設 white-space:nowrap 確保不換行 */
-
+  /* [4] Logo：縮小字體讓文字自然放得下，不截斷 */
   .logo {
-    flex-shrink: 0;          /* logo 優先，不被導覽列擠壓 */
+    flex-shrink: 0;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 16px !important;   /* 縮小讓所有文字都放得下 */
+    gap: 4px;
+    font-size: 15px !important;
     letter-spacing: 0 !important;
-    overflow: visible;       /* 不截斷 */
   }
-
   .logo > span:first-child {
     white-space: nowrap;
-    overflow: visible;       /* 完整顯示，不用 ellipsis */
-    text-overflow: clip;
-    max-width: none;         /* 取消寬度限制 */
-    display: inline;
-    font-size: 16px !important;
+    font-size: 15px !important;
   }
-
   .logo-badge {
     flex-shrink: 0;
     font-size: 13px !important;
@@ -527,10 +334,9 @@ tr:hover td{background:#fafcfb}
     white-space: nowrap;
   }
 
-  /* --- 導覽列：向右滑動 --- */
+  /* 導覽列向右滑動，不換行 */
   .header-nav {
     flex-shrink: 1;
-    flex-grow: 0;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
@@ -540,7 +346,6 @@ tr:hover td{background:#fafcfb}
     gap: 1px;
   }
   .header-nav::-webkit-scrollbar { display: none; }
-
   .header-nav .nav-btn {
     flex-shrink: 0;
     font-size: 12px !important;
@@ -548,17 +353,12 @@ tr:hover td{background:#fafcfb}
     white-space: nowrap !important;
   }
 
-  /* --- [E] 四小隊不超出右邊 ---
+  /* [5] 四小隊並排：每排最多兩個，自動換行
+  
+     JS 的 renderSquadBlock() 用 inline style 寫死
+     "flex:1;min-width:120px"，
+     需用屬性選擇器 + !important 才能覆蓋 inline style。 */
 
-     問題根源：JS 在 renderSquadBlock() 裡用 inline style 寫死
-       style="flex:1;min-width:120px"
-     CSS 一般規則優先序低於 inline style，
-     必須用屬性選擇器 + !important 才能覆蓋。
-     
-     修正：攔截有 min-width:120px 的 div，改為 50% 寬度，
-     讓四個小隊自動折成兩排 */
-
-  /* 攔截 JS 生成的小隊容器（有 min-width:120px 的 div） */
   div[style*="min-width:120px"],
   div[style*="min-width: 120px"] {
     flex: 1 1 calc(50% - 4px) !important;
@@ -567,7 +367,7 @@ tr:hover td{background:#fafcfb}
     box-sizing: border-box !important;
   }
 
-  /* 攔截小隊並排的外層容器，允許換行 */
+  /* 小隊並排的外層 flex 容器：允許換行 */
   div[style*="display:flex"][style*="gap:8px"],
   div[style*="display: flex"][style*="gap: 8px"],
   div[style*="display:flex"][style*="gap: 8px"],
@@ -575,19 +375,17 @@ tr:hover td{background:#fafcfb}
     flex-wrap: wrap !important;
   }
 
-  /* 確保整個以團別顯示的容器不超出螢幕 */
+  /* 整個以團別顯示區域不超出螢幕 */
   #view-content,
   #stats-content {
     overflow-x: hidden !important;
     max-width: 100%;
   }
 
-  /* 手機版表格高度縮小 */
+  /* 手機版表格高度縮短 */
   .tbl-wrap {
     max-height: 50vh !important;
   }
 }
-
-
 
 </style>

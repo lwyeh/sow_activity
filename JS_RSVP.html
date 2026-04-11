@@ -705,51 +705,141 @@ function loadStats() {
   }).catch(function(){ el.innerHTML = '<div class="empty">載入失敗</div>'; });
 }
 
+
+// ================================================================
+// JS_Admin 補丁 v3（最終版）
+//
+// 修復：
+//  [1] 出缺席統計表頭凍結（IntersectionObserver 方式）
+//  [2] 匯入 Excel 修正：
+//       - 第1列 = 欄位標題（rows[0]）
+//       - 第2列 = 說明列（跳過，從 i=2 開始讀）★ 關鍵修正
+//       - 欄位名稱「備註」對應「個人備註」欄位
+// ================================================================
+
+// ──────────────────────────────────────────────────────────────
+// [1] renderStats() — 出缺席統計，用 JS 固定表頭
+// ──────────────────────────────────────────────────────────────
 function renderStats(el, stats) {
   var circ = 2 * Math.PI * 46;
   var dash = circ * stats.attendRate / 100;
-  var clr  = stats.attendRate >= 70 ? 'var(--forest-lt)' : stats.attendRate >= 40 ? 'var(--amber)' : 'var(--red)';
+  var clr = stats.attendRate >= 70 ? 'var(--forest-lt)' : stats.attendRate >= 40 ? 'var(--amber)' : 'var(--red)';
 
-  var rows = S.statsMode === 'family' ? stats.byFamily : S.statsMode === 'troop' ? stats.byTroop : stats.bySquad;
-  var colLabel = S.statsMode === 'family' ? '家庭' : S.statsMode === 'troop' ? '團別' : '小隊';
+  var rows = S.statsMode === 'family' ? stats.byFamily
+           : S.statsMode === 'troop'  ? stats.byTroop
+           : stats.bySquad;
 
-  var html = '<div class="stats-row">' +
+  var colLabel = S.statsMode === 'family' ? '家庭'
+               : S.statsMode === 'troop'  ? '團別' : '小隊';
+
+  var siteHeaderH = (document.querySelector('.site-header') || {offsetHeight: 60}).offsetHeight;
+
+  var html =
+    '<div class="stats-row">' +
     '<div class="stat-box"><div class="stat-num">' + stats.total + '</div><div class="stat-lbl">報名人數</div></div>' +
     '<div class="stat-box stat-attend"><div class="stat-num">' + stats.attend + '</div><div class="stat-lbl">出席</div></div>' +
     '<div class="stat-box stat-absent"><div class="stat-num">' + stats.absent + '</div><div class="stat-lbl">不出席</div></div>' +
     '<div class="stat-box stat-pending"><div class="stat-num">' + stats.pending + '</div><div class="stat-lbl">待確認</div></div>' +
     '<div class="stat-box"><div class="stat-num" style="color:var(--ink-soft)">' + ((stats.totalMembers||0) - stats.total) + '</div><div class="stat-lbl">未填寫</div></div>' +
-  '</div>' +
-  '<div class="card" style="margin-bottom:16px">' +
+    '</div>' +
+    '<div class="card" style="margin-bottom:16px">' +
     '<div class="donut-wrap">' +
-      '<div class="donut">' +
-        '<svg width="110" height="110" viewBox="0 0 110 110">' +
-          '<circle cx="55" cy="55" r="46" fill="none" stroke="var(--mist)" stroke-width="12"/>' +
-          '<circle cx="55" cy="55" r="46" fill="none" stroke="' + clr + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + dash + ' ' + circ + '"/>' +
-        '</svg>' +
-        '<div class="donut-center"><span class="donut-pct" style="color:' + clr + '">' + stats.attendRate + '%</span><span class="donut-sub">出席率</span></div>' +
-      '</div>' +
-      '<div class="legend">' +
-        '<div class="legend-item"><div class="ldot" style="background:var(--forest-lt)"></div>出席 ' + stats.attend + ' 人</div>' +
-        '<div class="legend-item"><div class="ldot" style="background:var(--red)"></div>不出席 ' + stats.absent + ' 人</div>' +
-        '<div class="legend-item"><div class="ldot" style="background:var(--amber)"></div>待確認 ' + stats.pending + ' 人</div>' +
-        '<div class="legend-item"><div class="ldot" style="background:var(--line)"></div>未填寫 ' + ((stats.totalMembers||0) - stats.total) + ' 人</div>' +
-      '</div>' +
+    '<div class="donut">' +
+    '<svg width="110" height="110" viewBox="0 0 110 110">' +
+    '<circle cx="55" cy="55" r="46" fill="none" stroke="var(--mist)" stroke-width="12"/>' +
+    '<circle cx="55" cy="55" r="46" fill="none" stroke="' + clr + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + dash + ' ' + circ + '"/>' +
+    '</svg>' +
+    '<div class="donut-center"><span class="donut-pct" style="color:' + clr + '">' + stats.attendRate + '%</span><span class="donut-sub">出席率</span></div>' +
+    '</div>' +
+    '<div class="legend">' +
+    '<div class="legend-item"><div class="ldot" style="background:var(--forest-lt)"></div>出席 ' + stats.attend + ' 人</div>' +
+    '<div class="legend-item"><div class="ldot" style="background:var(--red)"></div>不出席 ' + stats.absent + ' 人</div>' +
+    '<div class="legend-item"><div class="ldot" style="background:var(--amber)"></div>待確認 ' + stats.pending + ' 人</div>' +
+    '<div class="legend-item"><div class="ldot" style="background:var(--line)"></div>未填寫 ' + ((stats.totalMembers||0) - stats.total) + ' 人</div>' +
+    '</div>' +
     '</div>' +
     '<div class="prog-wrap"><div class="prog-bar" style="width:' + stats.attendRate + '%"></div></div>' +
-  '</div>' +
-  '<div class="tbl-wrap"><table><thead><tr><th>' + colLabel + '</th><th>出席</th><th>不出席</th><th>待確認</th><th>未填寫</th></tr></thead><tbody>' +
-  rows.map(function(r) {
-    var total = r.attend + r.absent + r.pending + (r.unregistered || 0);
-    return '<tr><td>' + esc(r.name) + '</td><td>' + r.attend + '</td><td>' + r.absent + '</td><td>' + r.pending + '</td><td style="color:var(--ink-soft)">' + (r.unregistered || 0) + '</td></tr>';
-  }).join('') +
-  '</tbody></table></div>' +
-  '<div class="flex-end mt-4">' +
+    '</div>' +
+
+    // 浮動假表頭（position:fixed，捲走後才顯示）
+    '<div id="stats-sticky-header" style="' +
+      'display:none;position:fixed;top:' + siteHeaderH + 'px;left:0;right:0;z-index:150;' +
+      'background:var(--mist);border-bottom:1.5px solid var(--line);' +
+      'box-shadow:0 2px 6px rgba(0,0,0,0.12);overflow:hidden;">' +
+      '<div id="stats-sticky-inner" style="margin:0 auto;max-width:1200px;padding:0 20px;">' +
+        '<table style="border-collapse:collapse;width:100%;font-size:23px;">' +
+          '<thead><tr id="stats-sticky-row"></tr></thead>' +
+        '</table>' +
+      '</div>' +
+    '</div>' +
+
+    // 真正的表格
+    '<div class="tbl-wrap">' +
+    '<table id="stats-main-table"><thead><tr id="stats-real-row">' +
+    '<th>' + colLabel + '</th><th>出席</th><th>不出席</th><th>待確認</th><th>未填寫</th>' +
+    '</tr></thead><tbody>' +
+    rows.map(function(r) {
+      return '<tr><td>' + esc(r.name) + '</td><td>' + r.attend + '</td><td>' + r.absent + '</td><td>' + r.pending + '</td><td style="color:var(--ink-soft)">' + (r.unregistered || 0) + '</td></tr>';
+    }).join('') +
+    '</tbody></table></div>' +
+
+    '<div class="flex-end mt-4">' +
     '<button class="btn btn-outline btn-sm" data-aid="' + document.getElementById('stats-act-sel').value + '" onclick="exportCsv(this.getAttribute(\'data-aid\'))">匯出 CSV</button>' +
-  '</div>';
+    '</div>';
 
   el.innerHTML = html;
+
+  // 啟動凍結表頭邏輯
+  setupStatsStickyHeader();
 }
+
+function setupStatsStickyHeader() {
+  var realRow    = document.getElementById('stats-real-row');
+  var stickyRow  = document.getElementById('stats-sticky-row');
+  var stickyBar  = document.getElementById('stats-sticky-header');
+  var mainTable  = document.getElementById('stats-main-table');
+
+  if (!realRow || !stickyRow || !stickyBar || !mainTable) return;
+
+  // 把真實表頭的各欄複製到浮動表頭，並同步欄寬
+  function syncCols() {
+    var realThs = realRow.querySelectorAll('th');
+    stickyRow.innerHTML = '';
+    realThs.forEach(function(th) {
+      var w = th.getBoundingClientRect().width;
+      var clone = document.createElement('th');
+      clone.textContent = th.textContent;
+      clone.style.cssText = 'padding:8px 12px;text-align:left;font-weight:600;' +
+        'color:var(--forest-md);white-space:nowrap;' +
+        'width:' + w + 'px;min-width:' + w + 'px;' +
+        'font-size:23px;border-bottom:1.5px solid var(--line);';
+      stickyRow.appendChild(clone);
+    });
+  }
+
+  // 用 IntersectionObserver 偵測真實表頭是否離開視窗頂部
+  var siteHeaderH = (document.querySelector('.site-header') || {offsetHeight:60}).offsetHeight;
+
+  var observer = new IntersectionObserver(function(entries) {
+    var visible = entries[0].isIntersecting;
+    if (!visible) {
+      syncCols();
+      stickyBar.style.display = 'block';
+    } else {
+      stickyBar.style.display = 'none';
+    }
+  }, {
+    rootMargin: '-' + (siteHeaderH + 1) + 'px 0px 0px 0px',
+    threshold: 0
+  });
+
+  observer.observe(realRow);
+  window.addEventListener('resize', function() {
+    if (stickyBar.style.display !== 'none') syncCols();
+  });
+}
+
+
 
 // ── 6. 匯出 CSV ───────────────────────────────────────────────────
 

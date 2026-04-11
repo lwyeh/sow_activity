@@ -491,12 +491,39 @@ function deleteActivityById(aid) {
 
 // ── 名冊與升級 ────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────
+// [A] 完整版 loadRoster()
+//
+// 修改重點：
+//  1. 新增模式切換按鈕（簡易 / 完整）
+//  2. 簡易模式：原本的 9 欄
+//  3. 完整模式：全欄（扣掉 id / familyId）
+//     → 家庭、姓名、自然名、角色、性別、電話、Email、
+//       團別、年級、職位、小隊、會員編號、生日、入團日、個人備註
+//  4. 兩種模式都有：sticky 表頭、水平捲軸
+// ────────────────────────────────────────────────────────────────
+
+// 名冊模式狀態（'simple' | 'full'）
+var rosterMode = 'simple';
+
+function setRosterMode(mode) {
+  rosterMode = mode;
+  document.querySelectorAll('#roster-mode-ctrl .seg-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+  });
+  renderRosterContent();
+}
+
 function loadRoster() {
   var troop = document.getElementById('roster-troop').value;
   var squad = document.getElementById('roster-squad').value;
-  var el    = document.getElementById('roster-content');
+  var el = document.getElementById('roster-content');
 
-  // ★ 移除原本「兩個都空就 return」的限制，改為顯示全部
+  if (!troop && !squad) {
+    el.innerHTML = '<div class="empty">請選擇團別或小隊</div>';
+    return;
+  }
+
   var filtered = S.members.filter(function(m) {
     if (m.position === '離團') return false;
     if (troop && m.troop !== troop) return false;
@@ -504,30 +531,93 @@ function loadRoster() {
     return true;
   });
 
-  if (!filtered.length) { el.innerHTML = '<div class="empty">查無成員</div>'; return; }
+  // 把篩選結果暫存，供模式切換時直接使用
+  S._rosterFiltered = filtered;
 
-  el.innerHTML =
-    '<div style="margin-bottom:12px;font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>' +
-    '<div class="tbl-wrap"><table><thead><tr>' +
-      '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th><th>性別</th>' +
-      '<th>團別</th><th>小隊</th><th>年級</th><th>職位</th><th>個人備註</th>' +
-    '</tr></thead><tbody>' +
-    filtered.map(function(m) {
-      return '<tr>' +
-        '<td><strong>' + esc(m.name        || '') + '</strong></td>' +
-        '<td>'         + esc(m.naturalName || '') + '</td>' +
-        '<td>'         + esc(m.familyName  || '') + '</td>' +
-        '<td>'         + esc(m.role        || '') + '</td>' +
-        '<td>'         + esc(m.gender      || '') + '</td>' +
-        '<td>'         + esc(m.troop       || '') + '</td>' +
-        '<td>'         + esc(m.squad       || '') + '</td>' +
-        '<td>'         + esc(m.grade       || '') + '</td>' +
-        '<td>'         + esc(m.position    || '') + '</td>' +
-        '<td>'         + esc(m.remark      || '') + '</td>' +
-      '</tr>';
-    }).join('') +
-    '</tbody></table></div>';
+  // 插入模式切換按鈕（只產生一次）
+  if (!document.getElementById('roster-mode-ctrl')) {
+    var ctrl = document.createElement('div');
+    ctrl.id = 'roster-mode-ctrl';
+    ctrl.className = 'seg-ctrl';
+    ctrl.style.cssText = 'margin-bottom:12px;display:flex;';
+    ctrl.innerHTML =
+      '<button class="seg-btn active" data-mode="simple" onclick="setRosterMode(\'simple\')">簡易欄位</button>' +
+      '<button class="seg-btn" data-mode="full" onclick="setRosterMode(\'full\')">完整欄位</button>';
+    el.parentNode.insertBefore(ctrl, el);
+  }
+  // 確保按鈕狀態與目前模式一致
+  document.querySelectorAll('#roster-mode-ctrl .seg-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-mode') === rosterMode);
+  });
+
+  renderRosterContent();
 }
+
+function renderRosterContent() {
+  var filtered = S._rosterFiltered || [];
+  var el = document.getElementById('roster-content');
+
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty">查無成員</div>';
+    return;
+  }
+
+  var countHtml = '<div style="margin-bottom:12px;font-size:24px;color:var(--forest)">共 ' + filtered.length + ' 人</div>';
+
+  if (rosterMode === 'simple') {
+    // ── 簡易模式：原 9 欄 ────────────────────────────
+    el.innerHTML = countHtml +
+      '<div class="tbl-wrap"><table><thead><tr>' +
+      '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th>' +
+      '<th>性別</th><th>團別</th><th>小隊</th><th>年級</th><th>職位</th>' +
+      '</tr></thead><tbody>' +
+      filtered.map(function(m) {
+        return '<tr>' +
+          '<td><strong>' + esc(m.name) + '</strong></td>' +
+          '<td>' + esc(m.naturalName || '') + '</td>' +
+          '<td>' + esc(m.familyName || '') + '</td>' +
+          '<td>' + esc(m.role || '') + '</td>' +
+          '<td>' + esc(m.gender || '') + '</td>' +
+          '<td>' + esc(m.troop || '') + '</td>' +
+          '<td>' + esc(m.squad || '') + '</td>' +
+          '<td>' + esc(m.grade || '') + '</td>' +
+          '<td>' + esc(m.position || '') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+
+  } else {
+    // ── 完整模式：全欄（扣掉 id / familyId）─────────
+    el.innerHTML = countHtml +
+      '<div class="tbl-wrap"><table><thead><tr>' +
+      '<th>姓名</th><th>自然名</th><th>家庭</th><th>角色</th>' +
+      '<th>性別</th><th>電話</th><th>Email</th>' +
+      '<th>團別</th><th>年級</th><th>職位</th><th>小隊</th>' +
+      '<th>會員編號</th><th>出生日期</th><th>入團日期</th><th>個人備註</th>' +
+      '</tr></thead><tbody>' +
+      filtered.map(function(m) {
+        return '<tr>' +
+          '<td><strong>' + esc(m.name) + '</strong></td>' +
+          '<td>' + esc(m.naturalName || '') + '</td>' +
+          '<td>' + esc(m.familyName || '') + '</td>' +
+          '<td>' + esc(m.role || '') + '</td>' +
+          '<td>' + esc(m.gender || '') + '</td>' +
+          '<td style="white-space:nowrap">' + esc(m.phone || '') + '</td>' +
+          '<td>' + esc(m.email || '') + '</td>' +
+          '<td>' + esc(m.troop || '') + '</td>' +
+          '<td>' + esc(m.grade || '') + '</td>' +
+          '<td>' + esc(m.position || '') + '</td>' +
+          '<td>' + esc(m.squad || '') + '</td>' +
+          '<td>' + esc(m.memberNo || '') + '</td>' +
+          '<td style="white-space:nowrap">' + esc(m.birthDate || '') + '</td>' +
+          '<td style="white-space:nowrap">' + esc(m.joinDate || '') + '</td>' +
+          '<td>' + esc(m.note || '') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+}
+
 
 function openUpgradeModal() {
   document.getElementById('upgrade-list').innerHTML = '<div class="loading"></div>';
@@ -614,48 +704,105 @@ function handleImportFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
+
+// ──────────────────────────────────────────────────────────────
+// [2] parseImportData() — 正確版
+//
+// Excel 結構：
+//   rows[0]（第1列）= 欄位標題  → 用來建立 colMap
+//   rows[1]（第2列）= 說明列    → 跳過 ★
+//   rows[2]（第3列）起          = 實際資料，從 i=2 開始 ★
+//
+// 欄位比對：normalize() 去除空白+BOM，aliasMap 支援多種名稱
+//   「備註」= 此 Excel 的欄位名稱，對應到「個人備註」
+// ──────────────────────────────────────────────────────────────
 function parseImportData(rows) {
-  if (!rows || rows.length < 2) {
-    document.getElementById('import-parse-status').innerHTML = '<span style="color:var(--red)">檔案內容為空或格式錯誤</span>';
+  if (!rows || rows.length < 3) {
+    document.getElementById('import-parse-status').innerHTML =
+      '<span style="color:var(--red)">檔案內容為空或格式錯誤</span>';
     return;
   }
-  
-  var headers = rows[0].map(function(h){ return String(h||'').trim(); });
+
+  // normalize：去 BOM + 壓縮空白 + 小寫
+  function normalize(s) {
+    return String(s || '')
+      .replace(/^\uFEFF/, '')
+      .replace(/[\u3000\s]+/g, '')
+      .toLowerCase();
+  }
+
+  // 欄位別名對照（支援「備註」= 此 Excel 的欄位名）
+  var aliasMap = {
+    '家庭名稱':   ['家庭名稱', '家庭'],
+    '姓名':       ['姓名', 'name'],
+    '自然名':     ['自然名', 'naturalname'],
+    '角色':       ['角色', 'role'],
+    '性別':       ['性別', 'gender'],
+    '電話':       ['電話', 'phone', 'tel'],
+    'Email':      ['email', 'e-mail', '電子郵件', 'mail'],
+    '團別':       ['團別', 'troop'],
+    '年級':       ['年級', 'grade'],
+    '職位':       ['職位', 'position'],
+    '隊名':       ['隊名', 'squad', '小隊'],
+    '會員編號':   ['會員編號', 'memberno', '編號'],
+    '出生年月日': ['出生年月日', '出生日期', 'birthday', 'birthdate'],
+    '入團日期':   ['入團日期', '入團', 'joindate'],
+    '個人備註':   ['個人備註', '備註', 'note', 'remark', 'memo']  // ★「備註」在這裡
+  };
+
+  // 從第1列（rows[0]）建立 colMap
+  var rawHeaders = rows[0].map(function(h){ return String(h || ''); });
   var colMap = {};
-  ['家庭名稱', '姓名', '自然名', '角色', '性別', '電話', 'Email', '團別', '年級', '職位', '隊名', '會員編號', '出生年月日', '入團日期', '個人備註'].forEach(function(k) {
-    var idx = headers.indexOf(k);
-    if (idx >= 0) colMap[k] = idx;
+
+  Object.keys(aliasMap).forEach(function(stdKey) {
+    var aliases = aliasMap[stdKey].map(normalize);
+    rawHeaders.forEach(function(h, idx) {
+      if (aliases.indexOf(normalize(h)) >= 0) {
+        colMap[stdKey] = idx;
+      }
+    });
   });
 
+  // 偵錯（打開 F12 Console 可以看到）
+  console.log('[匯入] 原始欄位：', rawHeaders);
+  console.log('[匯入] colMap：', colMap);
+
   if (!('家庭名稱' in colMap) || !('姓名' in colMap) || !('角色' in colMap)) {
-    document.getElementById('import-parse-status').innerHTML = '<span style="color:var(--red)">缺少必填欄位：家庭名稱、姓名、角色</span>';
+    document.getElementById('import-parse-status').innerHTML =
+      '<span style="color:var(--red)">缺少必填欄位：家庭名稱、姓名、角色<br>' +
+      '<small>偵測到的欄位：' + rawHeaders.join('、') + '</small></span>';
     return;
   }
 
   importData = [];
   var errs = [];
-  
+
+  // ★ 從 i=2 開始（跳過 rows[0] 標題列 + rows[1] 說明列）
   for (var i = 2; i < rows.length; i++) {
     var r = rows[i];
-    if (!r || !r.length || !r[colMap['姓名']]) continue;
-     
+    if (!r || !r.length) continue;
+
+    // 跳過完全空白的列
+    var nameVal = (colMap['姓名'] !== undefined) ? r[colMap['姓名']] : '';
+    if (nameVal === null || nameVal === undefined || String(nameVal).trim() === '') continue;
+
     var item = { rowNum: i + 1 };
-    Object.keys(colMap).forEach(function(k) { 
+
+    Object.keys(colMap).forEach(function(k) {
       var val = r[colMap[k]];
-      // ★ 修改 3：精準掌控日期格式！若是日期，強制格式化為 YYYY/MM/DD
       if (val instanceof Date) {
         var yyyy = val.getFullYear();
-        var mm = String(val.getMonth() + 1).padStart(2, '0');
-        var dd = String(val.getDate()).padStart(2, '0');
+        var mm   = String(val.getMonth() + 1).padStart(2, '0');
+        var dd   = String(val.getDate()).padStart(2, '0');
         item[k] = yyyy + '/' + mm + '/' + dd;
       } else {
-        item[k] = val !== undefined ? String(val).trim() : ''; 
+        item[k] = (val !== null && val !== undefined) ? String(val).trim() : '';
       }
     });
 
     var stat = 'OK';
     if (!item['家庭名稱']) { stat = '缺家庭'; errs.push('第 ' + item.rowNum + ' 列：缺少家庭名稱'); }
-    else if (!item['角色']) { stat = '缺角色'; errs.push('第 ' + item.rowNum + ' 列：缺少角色'); }
+    else if (!item['角色']) { stat = '缺角色';  errs.push('第 ' + item.rowNum + ' 列：缺少角色'); }
     item.status = stat;
     importData.push(item);
   }
@@ -663,91 +810,114 @@ function parseImportData(rows) {
   if (errs.length > 0) {
     var errEl = document.getElementById('import-error-list');
     errEl.style.display = 'block';
-    errEl.innerHTML = '<strong>發現錯誤：</strong><br>' + errs.slice(0,5).join('<br>') + (errs.length>5 ? '<br>...等共 '+errs.length+' 個錯誤' : '');
+    errEl.innerHTML = '<strong>發現錯誤：</strong><br>' +
+      errs.slice(0, 5).join('<br>') +
+      (errs.length > 5 ? '<br>...等共 ' + errs.length + ' 個錯誤' : '');
     document.getElementById('import-confirm-btn').disabled = true;
   } else {
     document.getElementById('import-error-list').style.display = 'none';
     document.getElementById('import-confirm-btn').disabled = false;
   }
 
-  document.getElementById('import-summary').innerHTML = '<span class="badge badge-troop">共讀取 ' + importData.length + ' 筆</span>' +
-    (errs.length ? '<span class="badge" style="background:#fce8e6;color:var(--red)">' + errs.length + ' 筆錯誤</span>' : '<span class="badge badge-attend">格式檢查通過</span>');
+  document.getElementById('import-summary').innerHTML =
+    '<span class="badge badge-troop">共讀取 ' + importData.length + ' 筆</span>' +
+    (errs.length
+      ? '<span class="badge" style="background:#fce8e6;color:var(--red)">' + errs.length + ' 筆錯誤</span>'
+      : '<span class="badge badge-attend">格式檢查通過</span>');
 
   var tbody = document.getElementById('import-preview-body');
   tbody.innerHTML = importData.slice(0, 50).map(function(d, idx) {
     var stClr = d.status === 'OK' ? 'color:var(--forest)' : 'color:var(--red);font-weight:700';
-    return '<tr><td class="td-sm">' + (idx + 1) + '</td><td>' + esc(d['家庭名稱']) + '</td><td>' + esc(d['姓名']) + '</td><td>' + esc(d['自然名']) + '</td><td>' + esc(d['角色']) + '</td><td>' + esc(d['性別']) + '</td><td>' + esc(d['團別']) + '</td><td>' + esc(d['年級']) + '</td><td>' + esc(d['職位']) + '</td><td>' + esc(d['隊名']) + '</td><td>' + esc(d['會員編號']) + '</td><td>' + esc(d['出生年月日']) + '</td><td>' + esc(d['入團日期']) + '<td>' + esc(d['個人備註'] || '') + '</td>' + '</td><td style="' + stClr + '">' + d.status + '</td></tr>';
+    return '<tr>' +
+      '<td class="td-sm">'  + (idx + 1)                   + '</td>' +
+      '<td>' + esc(d['家庭名稱']   || '') + '</td>' +
+      '<td>' + esc(d['姓名']       || '') + '</td>' +
+      '<td>' + esc(d['自然名']     || '') + '</td>' +
+      '<td>' + esc(d['角色']       || '') + '</td>' +
+      '<td>' + esc(d['性別']       || '') + '</td>' +
+      '<td>' + esc(d['團別']       || '') + '</td>' +
+      '<td>' + esc(d['年級']       || '') + '</td>' +
+      '<td>' + esc(d['職位']       || '') + '</td>' +
+      '<td>' + esc(d['隊名']       || '') + '</td>' +
+      '<td>' + esc(d['會員編號']   || '') + '</td>' +
+      '<td>' + esc(d['出生年月日'] || '') + '</td>' +
+      '<td>' + esc(d['入團日期']   || '') + '</td>' +
+      '<td>' + esc(d['個人備註']   || '') + '</td>' +
+      '<td style="' + stClr + '">' + d.status + '</td>' +
+      '</tr>';
   }).join('');
 
   document.getElementById('import-step-upload').style.display = 'none';
   document.getElementById('import-step-preview').style.display = 'block';
 }
 
+
+// ──────────────────────────────────────────────────────────────
+// confirmImport() — 傳遞個人備註到後端
+// ──────────────────────────────────────────────────────────────
 function confirmImport() {
   if (!importData.length) return;
+
   document.getElementById('import-step-preview').style.display = 'none';
   document.getElementById('import-step-progress').style.display = 'block';
-  
+
   var total = importData.length, current = 0, successCount = 0;
-  var progBar = document.getElementById('import-progress-bar'), progText = document.getElementById('import-progress-text');
-  var famMap = {}; 
+  var progBar  = document.getElementById('import-progress-bar');
+  var progText = document.getElementById('import-progress-text');
+  var famMap = {};
   S.families.forEach(function(f){ famMap[f.name] = f.id; });
 
-  // ★ 修復：改為「嚴格的單線程循序處理」，完全消滅併發覆寫 (Race Condition)
   function processNext() {
-    // 檢查是否全部處理完畢
     if (current >= total) {
       document.getElementById('import-step-progress').style.display = 'none';
       document.getElementById('import-step-done').style.display = 'block';
       document.getElementById('import-done-msg').textContent = '匯入完成！';
-      document.getElementById('import-done-sub').textContent = '成功新增了 ' + successCount + ' 筆資料。';
-      loadAdminData(); 
+      document.getElementById('import-done-sub').textContent =
+        '成功新增了 ' + successCount + ' 筆資料。';
+      loadAdminData();
       return;
     }
 
     var d = importData[current];
     var fname = d['家庭名稱'];
 
-    // 1. 確保家庭已存在
     var ensureFamily = function() {
-      if (famMap[fname]) return Promise.resolve(famMap[fname]); // 已有家庭，直接回傳 ID
+      if (famMap[fname]) return Promise.resolve(famMap[fname]);
       return gas('saveFamily', { name: fname }).then(function(res) {
-        famMap[fname] = res.id; // 建立成功，記錄到字典，下一筆就能直接用
+        famMap[fname] = res.id;
         return res.id;
       });
     };
 
-    // 2. 拿到家庭ID後，再寫入成員資料
     ensureFamily().then(function(fid) {
-      return gas('saveMember', { 
-        familyId: fid, 
-        familyName: d['家庭名稱'], 
-        name: d['姓名'], 
-        naturalName: d['自然名'], 
-        role: d['角色'], 
-        gender: d['性別'], 
-        phone: d['電話'], 
-        email: d['Email'], 
-        troop: d['團別'], 
-        grade: d['年級'], 
-        position: d['職位'], 
-        squad: d['隊名'], 
-        memberNo: d['會員編號'], 
-        birthDate: d['出生年月日'], 
-        joinDate: d['入團日期'],
-        remark: d['個人備註'] || ''
+      return gas('saveMember', {
+        familyId:    fid,
+        familyName:  d['家庭名稱']   || '',
+        name:        d['姓名']       || '',
+        naturalName: d['自然名']     || '',
+        role:        d['角色']       || '',
+        gender:      d['性別']       || '',
+        phone:       d['電話']       || '',
+        email:       d['Email']      || '',
+        troop:       d['團別']       || '',
+        grade:       d['年級']       || '',
+        position:    d['職位']       || '',
+        squad:       d['隊名']       || '',
+        memberNo:    d['會員編號']   || '',
+        birthDate:   d['出生年月日'] || '',
+        joinDate:    d['入團日期']   || '',
+        note:        d['個人備註']   || ''
       });
     }).then(function() {
-      // 這筆確實存入後，才推進進度
       successCount++;
       current++;
       updateProgress();
-      processNext(); // ★ 呼叫下一筆開始處理
+      processNext();
     }).catch(function(e) {
       console.error('匯入失敗:', e);
       current++;
       updateProgress();
-      processNext(); // 就算這筆失敗，也繼續處理下一筆
+      processNext();
     });
   }
 
@@ -757,10 +927,13 @@ function confirmImport() {
     progText.textContent = '匯入中：' + current + ' / ' + total + ' (' + pct + '%)';
   }
 
-  // 啟動進度條並開始處理第一筆
   updateProgress();
-  processNext(); 
+  processNext();
 }
+
+
+
+
 
 // ── 出缺席統計 ──────────────────────────────────────────────────
 
