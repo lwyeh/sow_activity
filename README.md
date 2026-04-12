@@ -1,6 +1,6 @@
 # 荒野親子團 — 報名與收費系統
 
-> 基於 **Google Apps Script** + **Google Sheets** 打造的親子童軍團活動管理平台，提供會員報名、出席統計、收費對帳等一站式功能。
+> 基於 **Google Apps Script** + **Google Sheets** 打造的荒野親子團活動管理平台，提供會員報名、出席統計、收費對帳等一站式功能。
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 系統簡介
 
-本專案為荒野親子協會旗下親子童軍團設計，以 Google Apps Script 作為後端、Google Sheets 作為資料庫、HTML/CSS/JavaScript 作為前端介面，無需伺服器即可部署一套完整的活動報名與收費管理系統。
+本專案為荒野親子團設計，以 Google Apps Script 作為後端、Google Sheets 作為資料庫、HTML/CSS/JavaScript 作為前端介面，無需伺服器即可部署一套完整的活動報名與收費管理系統。
 
 系統分為兩個入口：
 - **一般頁面**（無參數）：供家長查詢並報名活動
