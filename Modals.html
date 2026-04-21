@@ -372,6 +372,58 @@
         <div id="t1-equip-list" style="margin-top:12px"></div>
       </div>
 
+      <!-- ★ 新增：類型一「管理者指定」批次區塊，放在設備列表卡片與說明卡片之間 -->
+      <div class="card" style="margin-bottom:14px" id="t1-admin-assign-section">
+        <div class="card-title" style="font-size:22px;margin-bottom:12px">管理者指定成員（管理者設備）</div>
+        <div style="font-size:20px;color:var(--ink-soft);margin-bottom:10px;background:var(--mist);border-radius:6px;padding:8px 10px">
+          針對種類為「管理者」的設備，在此指定成員與數量。
+        </div>
+
+        <!-- 費用項目 + 數量 -->
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="form-group" style="margin-bottom:0">
+            <label>選擇設備（管理者）*</label>
+            <select id="t1-admin-equip-sel">
+              <option value="">請先儲存活動並新增設備</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>數量</label>
+            <input id="t1-admin-qty" type="number" value="1" min="1" style="max-width:100px">
+          </div>
+        </div>
+
+        <!-- 快選類別按鈕 -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <button type="button" class="btn btn-outline btn-xs" onclick="quickSelectType1Admin('小蟻')">小蟻</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="quickSelectType1Admin('小蜂')">小蜂</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="quickSelectType1Admin('小鹿')">小鹿</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="quickSelectType1Admin('小鷹')">小鷹</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="quickSelectType1Admin('戶長')">戶長</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="quickSelectType1Admin('全部')">全部</button>
+          <button type="button" class="btn btn-danger btn-xs"  onclick="quickSelectType1Admin('清除')">清除</button>
+        </div>
+
+        <!-- 個別指定（自然名搜尋） -->
+        <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;background:var(--cream);padding:8px;border-radius:6px;border:1px solid var(--line);flex-wrap:wrap">
+          <span style="font-size:18px;font-weight:bold;color:var(--ink-soft);white-space:nowrap">個別指定：</span>
+          <input type="text" id="t1-admin-single-search" placeholder="輸入自然名搜尋..."
+            oninput="filterType1AdminSingleMembers()"
+            style="flex:1;min-width:120px;padding:4px 8px;font-size:20px;border:1px solid var(--line);border-radius:6px">
+          <select id="t1-admin-single-member-sel" style="flex:2;min-width:140px;padding:4px">
+            <option value="">載入成員中...</option>
+          </select>
+          <button type="button" class="btn btn-outline btn-sm" onclick="addType1AdminSingleMember()">+ 加入此成員</button>
+        </div>
+
+        <!-- 暫存名單 -->
+        <div id="t1-admin-batch-list" style="border:1px solid var(--line);border-radius:6px;padding:8px;min-height:60px"></div>
+
+        <div class="flex-end" style="margin-top:10px">
+          <button class="btn btn-primary btn-sm" id="t1-admin-save-btn" onclick="saveType1AdminBatch()">儲存這批指定</button>
+        </div>
+      </div>
+
       <div class="card" style="background:var(--mist)">
         <div style="font-size:22px;font-weight:700;color:var(--forest-md);margin-bottom:6px">✅ 使用者操作流程</div>
         <div style="font-size:20px;color:var(--ink-soft);line-height:1.8">
@@ -432,6 +484,11 @@
         
         <div style="margin-bottom:10px; display:flex; gap:8px; align-items:center; background:var(--cream); padding:8px; border-radius:6px; border:1px solid var(--line);">
           <span style="font-size:18px; font-weight:bold; color:var(--ink-soft)">個別指定：</span>
+          <!-- ★ 新增搜尋框 -->
+          <input type="text" id="type2-single-search" placeholder="輸入自然名搜尋成員..."
+            oninput="filterType2SingleMembers()"
+            style="width:100%;margin-bottom:6px;padding:6px 10px;font-size:20px;border:1px solid var(--line);border-radius:6px">
+          <select id="type2-single-member-sel" style="width:100%;margin-bottom:8px"></select>
           <select id="type2-single-member-sel" style="flex:1; padding:4px;">
             <option value="">載入成員中...</option>
           </select>

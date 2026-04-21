@@ -598,6 +598,8 @@ function getPayReport(actId, reportMode, posFilter) {
     var fid = String(r[3]).trim();
     var amt = Number(r[8]) || 0;
     
+    if (!mid || !fid) return; // ★ 防呆：跳過 ID 為空的異常明細
+
     if (!memDetails[mid]) memDetails[mid] = [];
     memDetails[mid].push({ equipName: r[5], qty: Number(r[6]) || 1, amount: amt });
     if (!famTotals[fid]) famTotals[fid] = 0;
@@ -608,14 +610,14 @@ function getPayReport(actId, reportMode, posFilter) {
 
   if (reportMode === '個人') {
     members.forEach(function(mem) {
-      if (mem.position === '離團' || mem.position === '無') return;
+      if (mem.position === '離團') return;
       if (posFilter && mem.position !== posFilter) return;
 
       var fid = mem.familyId;
       var fam = fMap[fid] || {};
       var fs = famStatus[fid] || { paidTotal: 0, method: '', submitAt: '', confirmAt: '', note: '', status: '', activeRecords: [] };
       var dispName = mem.naturalName || mem.name || '無姓名';
-      var details = memDetails[mem.id];
+      var details = memDetails[String(mem.id).trim()];
       var aNote = adminNotesMap[fid] || '';
 
       // ⭐ 新增抓取會員編號與入團日期 (加入自動格式化日期防呆)
@@ -649,12 +651,12 @@ function getPayReport(actId, reportMode, posFilter) {
   } 
   else {
     families.forEach(function(fam) {
-      var fid = fam.id;
+      var fid = String(fam.id).trim();
       if (posFilter) {
-        var hasMatch = members.some(function(m){ return m.familyId === fid && m.position === posFilter && m.position !== '離團' && m.position !== '無'; });
+        var hasMatch = members.some(function(m){ return m.familyId === fid && m.position === posFilter && m.position !== '離團'; });
         if (!hasMatch) return;
       }
-      var activeCount = members.filter(function(m){ return m.familyId === fid && m.position !== '離團' && m.position !== '無'; }).length;
+      var activeCount = members.filter(function(m){ return m.familyId === fid && m.position !== '離團'; }).length;
       if (activeCount === 0) return;
 
       var total = famTotals[fid];

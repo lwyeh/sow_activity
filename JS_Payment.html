@@ -343,6 +343,12 @@ function choosePayActType(type) {
   document.getElementById('payact-type2-section').style.display = type === 'type2' ? '' : 'none';
   
   _renderEquipList(); _renderType2Batch();
+  // ★ 新增：初始化類型一管理者指定區塊
+  if (type === 'type1') {
+    _type1AdminBatchItems = [];
+    _renderType1AdminBatch();
+    populateType1AdminSingleMembers();
+  }
   populateType2SingleMembers();
 
   var btn = document.getElementById('payact-save-btn'); btn.disabled = false; btn.textContent = '儲存活動';
@@ -374,6 +380,15 @@ function openEditPayAct(actId) {
   gas('getPayEquips', actId).then(function(equips) {
     _payEquips = equips || []; 
     _renderEquipList(); 
+
+    // ★ 新增：初始化類型一管理者指定區塊
+    if (_editPayActType === 'type1') {
+      refreshType1AdminEquipSel();
+      _type1AdminBatchItems = [];
+      _renderType1AdminBatch();
+      populateType1AdminSingleMembers();
+    }
+
     refreshType2EquipSel(); 
     _renderType2Batch();
     populateType2SingleMembers();
@@ -478,6 +493,9 @@ function _renderEquipList() {
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
+
+  // ★ 同步更新管理者設備選單（類型一專用）
+  if (_editPayActType === 'type1') refreshType1AdminEquipSel();
 }
 
 function refreshType2EquipSel() {
@@ -979,9 +997,9 @@ var _type1Equips   = [];
 var _type1SaveBusy = false;
 
 
-// ★ 注意函式多接收了一個 btnElement 參數
+var _type1RequestToken = 0; // ★ 新增：請求序號
+
 function openType1Selection(actId, actName, familyId, memberId, btnElement) {
-  // 1. 紀錄按鈕原始文字，並將按鈕反灰改為「載入中」
   var originalText = '';
   if (btnElement) {
     originalText = btnElement.textContent;
@@ -990,19 +1008,33 @@ function openType1Selection(actId, actName, familyId, memberId, btnElement) {
   }
 
   _type1ActId = actId; _type1FamId = familyId; _type1MemberId = memberId;
+
+  // ★ 每次呼叫產生新的 token，舊的非同步回呼比對後會自動放棄
+  var myToken = ++_type1RequestToken;
+
   var memberLabel = '';
   if (memberId) {
     var m = S.members.filter(function(x){return x.id === memberId})[0];
-    if (m) memberLabel = m.naturalName || m.name; 
+    if (m) memberLabel = m.naturalName || m.name;
   }
+
   document.getElementById('type1sel-title').textContent = '選擇設備：' + actName + (memberLabel ? '（' + memberLabel + '）' : '');
   var el = document.getElementById('type1sel-list'); el.innerHTML = '<div class="loading"></div>';
   var btn = document.getElementById('type1sel-save-btn'); btn.disabled = false; btn.textContent = '儲存選擇'; _type1SaveBusy = false;
 
   gas('getPayEquipsWithLimit', actId, memberId).then(function(equips) {
+    // ★ 若 token 已過期（使用者又點了別的活動），直接忽略這個回呼
+    if (myToken !== _type1RequestToken) return;
+
+    // ★ 回傳後恢復按鈕（只有最新這次才需要恢復）
+    if (btnElement) {
+      btnElement.disabled = false;
+      btnElement.textContent = originalText;
+    }
+
     _type1Equips = equips.filter(function(e){ return e.category === '使用者'; });
     if (!_type1Equips.length) { el.innerHTML = '<div class="empty">此活動尚未設定可選設備，請聯絡管理員</div>'; openModal('modal-type1-sel'); return; }
-    
+
     var html = '';
     _type1Equips.forEach(function(e) {
       var remainText = '';
@@ -1010,26 +1042,21 @@ function openType1Selection(actId, actName, familyId, memberId, btnElement) {
         var color = e.remainQty > 0 ? 'var(--forest-md)' : 'var(--red)';
         remainText = '　<span style="color:' + color + '">剩餘' + e.remainQty + '個</span> / 共' + e.maxQty + '個';
       }
-      
       var currentQty = e.myQty || 0;
       var subtotal = currentQty * e.price;
-      
       html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:12px 0">' +
         '<div><div style="font-weight:700;font-size:24px">' + esc(e.name) + '</div><div style="font-size:20px;color:var(--ink-soft)">單價 $' + e.price + remainText + '</div></div>' +
         '<div style="display:flex;align-items:center;gap:8px">' +
-          '<input id="type1qty-' + e.id + '" type="number" min="0" max="' + e.remainQty + '" value="' + currentQty + '" style="width:75px;text-align:center" oninput="updateType1Sub(\'' + e.id + '\',' + e.price + ')">' +
-          '<span style="font-size:22px;color:var(--forest-md);min-width:60px;text-align:right" id="type1sub-' + e.id + '">$' + subtotal + '</span>' +
+        '<input id="type1qty-' + e.id + '" type="number" min="0" max="' + e.remainQty + '" value="' + currentQty + '" style="width:75px;text-align:center" oninput="updateType1Sub(\'' + e.id + '\',' + e.price + ')">' +
+        '<span style="font-size:22px;color:var(--forest-md);min-width:60px;text-align:right" id="type1sub-' + e.id + '">$' + subtotal + '</span>' +
         '</div></div>';
     });
     el.innerHTML = html; openModal('modal-type1-sel');
-  }).catch(function() { 
-    el.innerHTML = '<div class="empty">載入失敗</div>'; openModal('modal-type1-sel'); 
-  }).finally(function() {
-    // 2. 當資料抓完（成功或失敗），把按鈕恢復原狀，讓使用者還可以再按
-    if (btnElement) {
-      btnElement.disabled = false;
-      btnElement.textContent = originalText;
-    }
+
+  }).catch(function(e) {
+    if (myToken !== _type1RequestToken) return;
+    if (btnElement) { btnElement.disabled = false; btnElement.textContent = originalText; }
+    el.innerHTML = '<div class="empty">載入失敗</div>';
   });
 }
 
@@ -1067,14 +1094,30 @@ function saveType1Selection() {
 }
 
 function populateType2SingleMembers() {
+  var searchEl = document.getElementById('type2-single-search');
+  if (searchEl) searchEl.value = '';
+  _renderType2SingleMemberSelect('');
+}
+
+function filterType2SingleMembers() {
+  var q = (document.getElementById('type2-single-search').value || '').toLowerCase().trim();
+  _renderType2SingleMemberSelect(q);
+}
+
+function _renderType2SingleMemberSelect(query) {
   var sel = document.getElementById('type2-single-member-sel');
   if (!sel) return;
-  sel.innerHTML = '<option value="">請選擇特定成員...</option>';
-  S.members.forEach(function(m) {
-    if (m.position !== '離團' && m.position !== '無') {
-      var dispName = m.naturalName || m.name; 
-      sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + (m.familyName ? ' (' + m.familyName + ')' : '') + '</option>';
-    }
+  sel.innerHTML = '<option value="">選擇成員</option>';
+  var list = S.members.filter(function(m) {
+    if ((m.position || '') === '離團') return false;
+    if (!query) return true;
+    var naturalName = (m.naturalName || '').toLowerCase();
+    var name = (m.name || '').toLowerCase();
+    return naturalName.indexOf(query) >= 0 || name.indexOf(query) >= 0;
+  });
+  list.forEach(function(m) {
+    var dispName = (m.naturalName || m.name) + '（' + (m.familyName || '') + '）';
+    sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + '</option>';
   });
 }
 
@@ -1107,5 +1150,159 @@ function adminDirectRefundFromCheck(actId, familyId, amount, cardId) {
       toast('操作失敗', 'error');
     });
   });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 類型一：管理者指定成員 批次區塊
+// ─────────────────────────────────────────────────────────────────
+var _type1AdminBatchItems = [];
+
+/** 重繪管理者設備下拉選單（只顯示 category === '管理者' 的設備） */
+function refreshType1AdminEquipSel() {
+  var sel = document.getElementById('t1-admin-equip-sel');
+  if (!sel) return;
+  var cur = sel.value;
+  var adminEquips = _payEquips.filter(function(e){ return e.category === '管理者'; });
+  if (!adminEquips.length) {
+    sel.innerHTML = '<option value="">（尚無管理者設備）</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">選擇管理者設備</option>';
+  adminEquips.forEach(function(e) {
+    sel.innerHTML += '<option value="' + e.id + '"' + (cur === e.id ? ' selected' : '') + '>'
+      + esc(e.name) + '（$' + e.price + '）</option>';
+  });
+}
+
+/** 初始化個別指定的成員下拉 */
+function populateType1AdminSingleMembers() {
+  var searchEl = document.getElementById('t1-admin-single-search');
+  if (searchEl) searchEl.value = '';
+  _renderType1AdminSingleSelect('');
+}
+
+/** 搜尋框 oninput */
+function filterType1AdminSingleMembers() {
+  var q = (document.getElementById('t1-admin-single-search').value || '').toLowerCase().trim();
+  _renderType1AdminSingleSelect(q);
+}
+
+/** 依關鍵字重繪成員下拉 */
+function _renderType1AdminSingleSelect(query) {
+  var sel = document.getElementById('t1-admin-single-member-sel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">選擇成員</option>';
+  var list = S.members.filter(function(m) {
+    if ((m.position || '') === '離團') return false;
+    if (!query) return true;
+    return (m.naturalName || '').toLowerCase().indexOf(query) >= 0
+        || (m.name || '').toLowerCase().indexOf(query) >= 0;
+  });
+  list.forEach(function(m) {
+    var dispName = (m.naturalName || m.name) + '（' + (m.familyName || '') + '）';
+    sel.innerHTML += '<option value="' + m.id + '">' + esc(dispName) + '</option>';
+  });
+}
+
+/** 快選類別（與 type2 的 quickSelectType2 邏輯相同） */
+function quickSelectType1Admin(pos) {
+  if (!_editPayActId) { toast('請先儲存活動名稱', 'warn'); return; }
+  var equipId = document.getElementById('t1-admin-equip-sel').value;
+  if (!equipId && pos !== '清除') { toast('請先選擇管理者設備', 'warn'); return; }
+
+  var equipName = ''; var unitPrice = 0;
+  _payEquips.forEach(function(e){ if (e.id === equipId) { equipName = e.name; unitPrice = e.price; } });
+
+  var qty = parseInt(document.getElementById('t1-admin-qty').value, 10) || 1;
+
+  if (pos === '清除') { _type1AdminBatchItems = []; _renderType1AdminBatch(); return; }
+
+  var targets = [];
+  if (pos === '全部')  { targets = S.members.filter(function(m){ return m.position !== '離團'; }); }
+  else if (pos === '戶長') {
+    var seen = {};
+    S.members.forEach(function(m){ if (m.role === '家長' && !seen[m.familyId]) { targets.push(m); seen[m.familyId] = true; } });
+  } else {
+    targets = S.members.filter(function(m){ return m.position === pos; });
+  }
+
+  targets.forEach(function(m) {
+    var exists = _type1AdminBatchItems.some(function(i){ return i.memberId === m.id && i.equipId === equipId; });
+    if (!exists) {
+      var dispName = (m.naturalName || m.name) + '(' + m.familyName + ')';
+      _type1AdminBatchItems.push({ memberId: m.id, familyId: m.familyId, name: dispName,
+        equipId: equipId, equipName: equipName, qty: qty, unitPrice: unitPrice, subtotal: qty * unitPrice });
+    }
+  });
+  _renderType1AdminBatch();
+  toast('已加入 ' + targets.length + ' 人', 'success');
+}
+
+/** 個別加入成員 */
+function addType1AdminSingleMember() {
+  if (!_editPayActId) { toast('請先儲存活動名稱', 'warn'); return; }
+  var equipId  = document.getElementById('t1-admin-equip-sel').value;
+  var memberId = document.getElementById('t1-admin-single-member-sel').value;
+  var qty      = parseInt(document.getElementById('t1-admin-qty').value, 10) || 1;
+  if (!equipId)  { toast('請先選擇管理者設備', 'warn'); return; }
+  if (!memberId) { toast('請選擇要加入的成員', 'warn'); return; }
+
+  var equipName = ''; var unitPrice = 0;
+  _payEquips.forEach(function(e){ if (e.id === equipId) { equipName = e.name; unitPrice = e.price; } });
+
+  var m = S.members.filter(function(x){ return x.id === memberId; })[0];
+  if (!m) return;
+
+  var exists = _type1AdminBatchItems.some(function(i){ return i.memberId === m.id && i.equipId === equipId; });
+  if (!exists) {
+    var dispName = (m.naturalName || m.name) + '(' + m.familyName + ')';
+    _type1AdminBatchItems.push({ memberId: m.id, familyId: m.familyId, name: dispName,
+      equipId: equipId, equipName: equipName, qty: qty, unitPrice: unitPrice, subtotal: qty * unitPrice });
+    _renderType1AdminBatch();
+    toast('已加入：' + dispName, 'success');
+  } else {
+    toast('此成員已在名單中！', 'warn');
+  }
+}
+
+/** 移除暫存名單中的一項 */
+function removeType1AdminItem(idx) {
+  _type1AdminBatchItems.splice(idx, 1);
+  _renderType1AdminBatch();
+}
+
+/** 重繪暫存名單 */
+function _renderType1AdminBatch() {
+  var el = document.getElementById('t1-admin-batch-list');
+  if (!el) return;
+  if (!_type1AdminBatchItems.length) {
+    el.innerHTML = '<div style="color:var(--ink-soft);font-size:20px;text-align:center;padding:10px">名單為空</div>';
+    return;
+  }
+  var html = '<div style="max-height:240px;overflow-y:auto">';
+  _type1AdminBatchItems.forEach(function(item, idx) {
+    html += '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:5px 0;font-size:20px">'
+      + '<span>' + esc(item.name) + ' : ' + esc(item.equipName) + ' x' + item.qty + '</span>'
+      + '<span style="color:var(--forest-md)">$' + item.subtotal
+      + ' <button style="background:none;border:none;color:var(--red);cursor:pointer;margin-left:6px" onclick="removeType1AdminItem(' + idx + ')">✕</button></span>'
+      + '</div>';
+  });
+  html += '</div><div style="font-size:20px;color:var(--ink-soft);margin-top:6px">共 ' + _type1AdminBatchItems.length + ' 筆</div>';
+  el.innerHTML = html;
+}
+
+/** 儲存批次（重用 saveType2Batch 的後端 API，資料結構相同） */
+function saveType1AdminBatch() {
+  if (!_editPayActId) { toast('請先儲存活動名稱', 'warn'); return; }
+  if (!_type1AdminBatchItems.length) { toast('名單為空', 'warn'); return; }
+  var btn = document.getElementById('t1-admin-save-btn');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = '儲存中...';
+  gas('saveType2Batch', _editPayActId, _type1AdminBatchItems).then(function() {
+    toast('批次指定已儲存', 'success');
+    _type1AdminBatchItems = [];
+    _renderType1AdminBatch();
+  }).catch(function() { toast('儲存失敗', 'error'); })
+  .finally(function() { btn.disabled = false; btn.textContent = '儲存這批指定'; });
 }
 </script>
