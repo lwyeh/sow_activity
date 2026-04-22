@@ -498,19 +498,19 @@ function rejectPayRecord(recordId, reason) {
     });
 
     if (emails.length > 0) {
-      var subject = '【荒野親子團】繳費退回通知：' + actName;
+      var subject = '【荒野親子團】【竹三團】繳費退回通知：' + actName;
       var body = famName + ' 您好，\n\n' +
                  '您於 ' + submitDate + ' 提交的「' + actName + '」繳費回報（' + method + ' $' + amount + '），' +
                  '已由管理員退回。\n\n' +
                  '【退回原因】：\n' + reason + '\n\n' +
                  '煩請您登入報名系統，進入「登記與繳費」頁面查看明細，並重新回報，謝謝您的配合！\n\n' +
-                 '荒野親子團 系統自動通知';
+                 '系統自動通知，請勿直接回信，有問題請洽育成會財務組\n';
       
       MailApp.sendEmail({
         to: emails.join(','),
         subject: subject,
         body: body,
-        name: '荒野親子團報名系統'
+        name: '荒野親子團竹三團報名系統'
       });
     }
   } catch (e) {
@@ -825,6 +825,54 @@ function saveAdminNote(actId, familyId, note) {
   sh.getRange(lastRow, 3).setNumberFormat('@').setValue(note); 
   
   return { success: true };
+}
+
+// ── 新增：批次儲存管理員對帳備註 ────────────────────────────────
+// items = [{ familyId, note }]
+function batchSaveAdminNote(actId, itemsJson) {
+  var items = JSON.parse(itemsJson);
+  if (!items || !items.length) return { success: true, count: 0 };
+  var ss = getDb();
+  var sh = ss.getSheetByName('對帳備註');
+
+  // 若工作表不存在則自動建立（與 saveAdminNote 邏輯相同）
+  if (!sh) {
+    sh = ss.insertSheet('對帳備註');
+    sh.appendRow(['活動ID', '家庭ID', '管理員備註']);
+    sh.getRange('A1:C1').setFontWeight('bold');
+    sh.getRange('C:C').setNumberFormat('@');
+    sh.setFrozenRows(1);
+    sh.hideSheet();
+  }
+
+  var data = sh.getDataRange().getValues();
+
+  // 建立現有紀錄的 row index map：key = actId_familyId → rowIndex (1-based)
+  var rowMap = {};
+  for (var i = 1; i < data.length; i++) {
+    var k = String(data[i][0]).trim() + '_' + String(data[i][1]).trim();
+    rowMap[k] = i + 1;
+  }
+
+  items.forEach(function(item) {
+    var fid = String(item.familyId).trim();
+    var note = item.note || '';
+    var key = String(actId).trim() + '_' + fid;
+
+    if (rowMap[key]) {
+      // 已有紀錄：更新備註
+      sh.getRange(rowMap[key], 3).setNumberFormat('@').setValue(note);
+    } else {
+      // 無紀錄：新增一列
+      sh.appendRow([actId, fid, note]);
+      var lastRow = sh.getLastRow();
+      sh.getRange(lastRow, 3).setNumberFormat('@').setValue(note);
+      // 更新 rowMap 以防同一批有重複 familyId
+      rowMap[key] = lastRow;
+    }
+  });
+
+  return { success: true, count: items.length };
 }
 
 // ── 新增：取得活動可選設備 (支援「全域數量上限」與「個人已選數量」盤點) ──

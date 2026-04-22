@@ -626,6 +626,26 @@
   </div>
 </div>
 
+<!-- 批次備註 Modal -->
+<div id="modal-batch-note" class="overlay" onclick="if(event.target===this)closeModal('modal-batch-note')">
+  <div class="modal" style="max-width:680px;width:95%">
+    <div class="modal-header">
+      <span style="font-size:24px;font-weight:700">📝 批次填寫備註</span>
+      <button class="modal-close" onclick="closeModal('modal-batch-note')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:20px;color:var(--ink-soft);margin-bottom:12px">
+        可為每個家庭填寫不同備註，填完後一次儲存。留空表示清除備註。
+      </p>
+      <div id="batch-note-list"></div>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px">
+      <button class="btn btn-outline btn-sm" onclick="closeModal('modal-batch-note')">取消</button>
+      <button id="batch-note-save-btn" class="btn btn-primary btn-sm" onclick="saveBatchNotes()">儲存全部備註</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-custom-confirm">
   <div class="modal" style="max-width:400px; text-align:center;">
     <div style="font-size:45px; margin-bottom:10px;">❓</div>

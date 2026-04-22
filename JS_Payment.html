@@ -871,7 +871,11 @@ function loadPayReport() {
     });
 
     // ── 2. 繪製統計表 (套用 fmtMoney) ──
-    var summaryHtml = '<div class="card" style="margin-bottom:16px; padding:16px;">' +
+    var summaryHtml = 
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:10px">' +
+      '<button class="btn btn-outline btn-sm" onclick="openBatchNoteModal(\'' + actId + '\')">' +
+      '📝 批次備註</button></div>' +
+      '<div class="card" style="margin-bottom:16px; padding:16px;">' +
       '<div style="font-size:22px; font-weight:bold; margin-bottom:12px; color:var(--forest-md);">📊 繳費方式統計</div>' +
       '<div class="tbl-wrap"><table>' +
       '<thead><tr><th>繳費方式</th><th>總應繳</th><th>總已繳</th><th>總未繳</th></tr></thead><tbody>';
@@ -985,6 +989,116 @@ function saveAdminNoteBtn() {
   });
 }
 
+// ── 新增：批次備註 Modal 相關函式 ────────────────────────────────
+
+var _batchNoteActId = '';
+var _batchNoteRows = []; // [{ familyId, familyName, note }]
+var _batchNoteBusy = false;
+
+function openBatchNoteModal(actId) {
+  _batchNoteActId = actId;
+  _batchNoteBusy = false;
+
+  var el = document.getElementById('batch-note-list');
+  el.innerHTML = '<div class="loading"></div>';
+
+  var btn = document.getElementById('batch-note-save-btn');
+  btn.disabled = false;
+  btn.textContent = '儲存全部備註';
+
+  openModal('modal-batch-note');
+
+  // 從目前報表資料中抓取所有家庭（家庭模式）
+  var filters = getReportModeAndFilter();
+  gas('getPayReport', actId, '家庭', filters.posFilter).then(function(rows) {
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div class="empty">此活動無家庭資料</div>';
+      return;
+    }
+
+    // 去重（按 familyId）
+    var seen = {};
+    _batchNoteRows = [];
+    rows.forEach(function(r) {
+      if (!seen[r.familyId]) {
+        seen[r.familyId] = true;
+        _batchNoteRows.push({
+          familyId: r.familyId,
+          familyNo: r.familyNo || '',
+          familyName: r.familyName || '',
+          note: r.adminNote || ''
+        });
+      }
+    });
+
+    _renderBatchNoteList();
+  }).catch(function() {
+    el.innerHTML = '<div class="empty">載入失敗</div>';
+  });
+}
+
+function _renderBatchNoteList() {
+  var el = document.getElementById('batch-note-list');
+  if (!_batchNoteRows.length) {
+    el.innerHTML = '<div class="empty">無資料</div>';
+    return;
+  }
+
+  var html = '<div class="tbl-wrap"><table>' +
+    '<thead><tr><th style="width:30%">家庭</th><th>備註</th></tr></thead><tbody>';
+
+  _batchNoteRows.forEach(function(row, idx) {
+    var label = (row.familyNo ? '[' + row.familyNo + '] ' : '') + esc(row.familyName);
+    html += '<tr>' +
+      '<td style="font-size:20px;font-weight:700;white-space:nowrap">' + label + '</td>' +
+      '<td><input type="text" class="batch-note-input" data-idx="' + idx + '" ' +
+        'value="' + esc(row.note) + '" ' +
+        'style="width:100%;font-size:20px;padding:6px 8px;border:1px solid var(--line);border-radius:4px" ' +
+        'placeholder="留空表示清除備註"></td>' +
+      '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function saveBatchNotes() {
+  if (_batchNoteBusy) return;
+
+  // 收集所有 input 的最新值
+  var inputs = document.querySelectorAll('.batch-note-input');
+  var items = [];
+  inputs.forEach(function(inp) {
+    var idx = parseInt(inp.dataset.idx, 10);
+    var row = _batchNoteRows[idx];
+    if (!row) return;
+    var newNote = inp.value.trim();
+    // 只送出有變動的，或有值的（空值也要送以便清除）
+    items.push({ familyId: row.familyId, note: newNote });
+  });
+
+  if (!items.length) {
+    toast('沒有資料可儲存', 'warn');
+    return;
+  }
+
+  var btn = document.getElementById('batch-note-save-btn');
+  _batchNoteBusy = true;
+  btn.disabled = true;
+  btn.textContent = '儲存中...';
+
+  gas('batchSaveAdminNote', _batchNoteActId, JSON.stringify(items)).then(function() {
+    toast('已儲存 ' + items.length + ' 筆備註', 'success');
+    closeModal('modal-batch-note');
+    loadPayReport(); // 重整報表
+  }).catch(function() {
+    toast('儲存失敗', 'error');
+  }).finally(function() {
+    _batchNoteBusy = false;
+    btn.disabled = false;
+    btn.textContent = '儲存全部備註';
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────
 // 5. type1：使用者選擇設備 Modal
