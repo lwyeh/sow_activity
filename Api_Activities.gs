@@ -265,11 +265,73 @@ function testGetActivities() {
   Logger.log(JSON.stringify(result));
 }
 
+// ── 出缺席統計：管理員手動修改單一成員狀態 ──────────────────────
+// activityId: 活動 ID；memberId: 成員 ID；newStatus: '出席'|'不出席'|'待確認'|'未報名'
+// 若該成員原本沒有這場活動的報名紀錄（未報名），會自動新增一筆；
+// 若已有紀錄，則直接更新狀態與最後更新時間。
+function updateAttendanceStatus(activityId, memberId, newStatus) {
+  activityId = String(activityId || '');
+  memberId   = String(memberId || '');
+
+  var VALID_STATUS = ['出席', '不出席', '待確認', '未報名'];
+  if (VALID_STATUS.indexOf(newStatus) === -1) {
+    throw new Error('無效的出缺席狀態：' + newStatus);
+  }
+
+  var activity = getActivities().filter(function(a){ return a.id === activityId; })[0];
+  if (!activity) throw new Error('找不到指定的活動');
+
+  var member = getMembers().filter(function(m){ return m.id === memberId; })[0];
+  if (!member) throw new Error('找不到指定的成員');
+
+  var sh  = getSheet(SHEET_RSVP);
+  var now = new Date();
+  var all = sh.getDataRange().getValues();
+
+  var existIdx = -1;
+  for (var i = 1; i < all.length; i++) {
+    if (String(all[i][1]) === activityId && String(all[i][3]) === memberId) {
+      existIdx = i;
+      break;
+    }
+  }
+
+  if (newStatus === '未報名') {
+    // 「未報名」代表沒有報名紀錄：若原本有紀錄則刪除該列
+    if (existIdx >= 0) sh.deleteRow(existIdx + 1);
+    return { success: true };
+  }
+
+  if (existIdx >= 0) {
+    // 已有紀錄：只更新狀態欄（H）與最後更新時間欄（K），其餘（含備註）保留原值
+    sh.getRange(existIdx + 1, 8).setValue(newStatus);      // col H：status
+    sh.getRange(existIdx + 1, 11).setValue(now);           // col K：updatedAt
+  } else {
+    // 沒有紀錄：新增一筆，rsvpTime 與 updatedAt 皆為現在
+    var row = [
+      genId('R'),
+      activityId,
+      activity.name,
+      memberId,
+      member.naturalName || member.name,
+      member.familyId,
+      member.familyName,
+      newStatus,
+      '',
+      now,
+      now
+    ];
+    sh.appendRow(row);
+  }
+
+  return { success: true };
+}
+
 // ── 出缺席統計 API ─────────────────────────────────────────────
 // 統計每位成員在「納入統計」的活動中的出缺席次數
-// posFilter: 可傳入職位字串（如 '小蟻'）來篩選，空字串代表全部
-function getAttendanceStat(posFilter) {
-  posFilter = String(posFilter || '').trim();
+// troopFilter: 可傳入團別字串（如 '蟻'）來篩選，空字串代表全部團別
+function getAttendanceStat(troopFilter) {
+  troopFilter = String(troopFilter || '').trim();
 
   // 只取納入統計的活動
   var activities = getActivities().filter(function(a){ return a.countStat; });
@@ -285,16 +347,11 @@ function getAttendanceStat(posFilter) {
     return r[0] && actIds[String(r[1])] && r[4] !== '整體備註';
   });
 
-  // 取得成員資料，套用職位篩選，排除離團與無
+  // 取得成員資料，套用團別篩選，排除離團與無
   var members = getMembers().filter(function(m){
     if (m.position === '離團') return false;
-    if (posFilter) {
-      // 「家長」「戶長」存在 role 欄，其餘（小蟻/小蜂/小鹿/小鷹）存在 position 欄
-      var parentRoles = ['家長', '戶長'];
-      if (parentRoles.indexOf(posFilter) !== -1) {
-        return m.role === posFilter;
-      }
-      return m.position === posFilter;
+    if (troopFilter) {
+      return m.troop === troopFilter;
     }
     return true;
   });

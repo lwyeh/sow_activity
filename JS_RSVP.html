@@ -465,7 +465,7 @@ if (groupKey === 'family') {
             var isLeader = leaderPositions.indexOf(m.position) >= 0;
             s += '<div style="flex:1;display:flex;align-items:center;gap:0;border-bottom:1px solid #f0f4f2;border-right:1px solid #f0f4f2' + (isLeader ? ';background:#f0f6f0' : '') + '">' +
               '<span style="background:' + bg + ';color:' + clr + ';font-size:22px;font-weight:700;width:22px;text-align:center;padding:3px 0;flex-shrink:0">' + label + '</span>' +
-              '<span style="padding:3px 7px;font-size:26px' + (isLeader ? ';font-weight:700;color:var(--forest-md)' : '') + '">' + esc(m.naturalName || m.name) + '</span>' +
+              '<span style="padding:3px 7px;font-size:26px' + (isLeader ? ';font-weight:700;color:var(--forest-md)' : '') + '">' + esc(m.naturalName || m.name) + (m.anxinMark ? '<span style="font-size:14px;vertical-align:2px;margin-left:2px">🐣</span>' : '') + '</span>' +
             '</div>';
           });
           for (var pad = rowM.length; pad < perRow; pad++) {
@@ -483,7 +483,7 @@ if (groupKey === 'family') {
           var isLeader = leaderPositions.indexOf(m.position) >= 0;
           s += '<div style="display:flex;align-items:center;gap:0;border-bottom:1px solid #f0f4f2' + (isLeader ? ';background:#f0f6f0' : '') + '">' +
             '<span style="background:' + bg + ';color:' + clr + ';font-size:22px;font-weight:700;width:22px;text-align:center;padding:3px 0;flex-shrink:0">' + label + '</span>' +
-            '<span style="padding:3px 7px;font-size:26px' + (isLeader ? ';font-weight:700;color:var(--forest-md)' : '') + '">' + esc(m.naturalName || m.name) + '</span>' +
+            '<span style="padding:3px 7px;font-size:26px' + (isLeader ? ';font-weight:700;color:var(--forest-md)' : '') + '">' + esc(m.naturalName || m.name) + (m.anxinMark ? '<span style="font-size:14px;vertical-align:2px;margin-left:2px">🐣</span>' : '') + '</span>' +
           '</div>';
         });
       }
@@ -563,7 +563,7 @@ if (groupKey === 'family') {
             else                          { bg='#f0f0f0'; clr='#aaa';    label='—'; }
             s += '<div style="flex:1;display:flex;align-items:center;gap:0;border-bottom:1px solid #f0f4f2;border-right:1px solid #f0f4f2;background:#f0f6f0">' +
               '<span style="background:' + bg + ';color:' + clr + ';font-size:22px;font-weight:700;width:22px;text-align:center;padding:3px 0;flex-shrink:0">' + label + '</span>' +
-              '<span style="padding:3px 7px;font-size:26px;font-weight:700;color:var(--forest-md)">' + esc(m.naturalName || m.name) + '</span>' +
+              '<span style="padding:3px 7px;font-size:26px;font-weight:700;color:var(--forest-md)">' + esc(m.naturalName || m.name) + (m.anxinMark ? '<span style="font-size:14px;vertical-align:2px;margin-left:2px">🐣</span>' : '') + '</span>' +
             '</div>';
           });
           for (var pad = rowM.length; pad < perRow; pad++) {
@@ -597,6 +597,18 @@ if (groupKey === 'family') {
         var eagleIkuMembers = [];   // 第三排左：鷹育
         var deerIkuMembers = [];    // 第三排右：鹿育
         var littleAntMembers = [];  // 第四排：小小蟻
+        var hasAnxinYing = false;   // 是否有「安心營」職位成員（用於最後註記）
+
+        // 職位為「安心營」的成員，顯示時在自然名後方加註較小的標示
+        function markIfAnxin(m, pos) {
+          if (pos === '安心營') {
+            hasAnxinYing = true;
+            var clone = Object.assign({}, m);
+            clone.anxinMark = true;
+            return clone;
+          }
+          return m;
+        }
 
         // 精準分流每個成員（職位為「無」的跳過）
         merged.forEach(function(m) {
@@ -610,23 +622,23 @@ if (groupKey === 'family') {
 
           // 第一排：職位包含「會長」
           if (pos.indexOf('會長') !== -1) {
-            staffMembers.push(m);
+            staffMembers.push(markIfAnxin(m, pos));
 
           // 第四排：隊名為「小小蟻」
           } else if (sq === '小小蟻') {
-            littleAntMembers.push(m);
+            littleAntMembers.push(markIfAnxin(m, pos));
 
           // 第三排左：隊名為「鷹育」
           } else if (sq === '鷹育') {
-            eagleIkuMembers.push(m);
+            eagleIkuMembers.push(markIfAnxin(m, pos));
 
           // 第三排右：隊名為「鹿育」
           } else if (sq === '鹿育') {
-            deerIkuMembers.push(m);
+            deerIkuMembers.push(markIfAnxin(m, pos));
 
           // 第二排：四個小隊
           } else if (regSquads.indexOf(sq) >= 0) {
-            regSquadMembers[sq].push(m);
+            regSquadMembers[sq].push(markIfAnxin(m, pos));
 
           // 不屬於以上任何分類
           } else {
@@ -672,6 +684,11 @@ if (groupKey === 'family') {
         // ==========================================
         if (littleAntMembers.length > 0) {
           html += '<div style="width:100%">' + renderSquadBlock('🐜 小小蟻', sortByPosition(littleAntMembers, posRule.squads), '#d4a373', 4) + '</div>';
+        }
+
+        // 註記：🐣 標示代表職位為「安心營」
+        if (hasAnxinYing) {
+          html += '<div style="width:100%;font-size:16px;color:var(--ink-soft);margin-top:4px">🐣 安心營</div>';
         }
       } else if (squadsOfTroop.length > 0) {
         var staffMembers = merged.filter(function(m){ return squadsOfTroop.indexOf(m.squad) < 0; });

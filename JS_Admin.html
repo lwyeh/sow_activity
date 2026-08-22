@@ -18,9 +18,19 @@ function doLogin() {
     btn.textContent = '身分驗證中...';
   }
 
+// 白名單：目前系統認得的角色。日後新增角色請同步在 setMenuByRole 加上對應分支。
+var ADMIN_ROLE_WHITELIST = ['admin', 'userdata', 'finance', 'attendance'];
+
   // 呼叫後端的 verifyAdminLogin API
   gas('verifyAdminLogin', user, pass).then(function(res) {
     if (res.success) {
+
+      // ★ 白名單防呆：權限欄位是自由文字，登入前先確認是系統認得的角色
+      if (ADMIN_ROLE_WHITELIST.indexOf(res.role) === -1) {
+        toast('帳號權限設定有誤（未知權限：「' + res.role + '」），請聯絡系統管理員確認「管理員帳號」表的權限欄位', 'error');
+        return;
+      }
+
       toast('登入成功！', 'success');
       
       // 隱藏登入框，顯示後台主畫面
@@ -96,6 +106,12 @@ function setMenuByRole(role) {
     document.getElementById('atab-payreport').style.display = 'block';
 
     document.getElementById('atab-payacts').click();
+
+  } else if (role === 'attendance') {
+    // attendance: 只開出缺席統計
+    document.getElementById('atab-attendstat').style.display = 'block';
+
+    document.getElementById('atab-attendstat').click();
   }
 }
 
@@ -988,11 +1004,11 @@ function confirmImport() {
 var _attendStatData = null; // 快取最後一次查詢結果，供匯出使用
 
 function loadAttendStat() {
-  var pos = document.getElementById('attendstat-pos').value;
+  var troop = document.getElementById('attendstat-troop').value;
   var el  = document.getElementById('attendstat-content');
   el.innerHTML = '<div class="loading"></div>';
 
-  gas('getAttendanceStat', pos).then(function(res) {
+  gas('getAttendanceStat', troop).then(function(res) {
     _attendStatData = res;
     renderAttendStat(res);
   }).catch(function() {
@@ -1046,9 +1062,12 @@ function renderAttendStat(res) {
 
   // ── 資料列
   var tbody = rows.map(function(r) {
-    var actCells = r.actStats.map(function(st) {
+    var actCells = r.actStats.map(function(st, idx) {
       var style = stColor[st] || 'background:#e9ecef;color:#6c757d';
-      return '<td style="text-align:center;' + style + ';font-weight:600;font-size:14px">' + (stLabel[st] || st) + '</td>';
+      var a = acts[idx];
+      return '<td data-mid="' + esc(r.memberId) + '" data-aid="' + esc(a.id) + '" ' +
+        'onclick="onAttendCellClick(this)" title="點擊修改出缺席狀態" ' +
+        'style="cursor:pointer;text-align:center;' + style + ';font-weight:600;font-size:14px">' + (stLabel[st] || st) + '</td>';
     }).join('');
 
     var rateColor = r.attendRate >= 80 ? 'color:var(--forest);font-weight:700'
@@ -1084,6 +1103,80 @@ function renderAttendStat(res) {
         '<tbody>' + tbody + '</tbody>' +
       '</table>' +
     '</div>';
+}
+
+// 狀態選項（供修改 modal 使用，含順序與樣式）
+var ATTEND_STATUS_OPTIONS = [
+  { value: '出席',   label: '✔ 出席',   style: 'background:#d4edda;color:#155724' },
+  { value: '不出席', label: '✘ 不出席', style: 'background:#f8d7da;color:#721c24' },
+  { value: '待確認', label: '？ 待確認', style: 'background:#fff3cd;color:#856404' },
+  { value: '未報名', label: '— 未報名（清除紀錄）', style: 'background:#e9ecef;color:#6c757d' }
+];
+
+var _attendEditCtx = null; // { mid, aid, memberName, actName, actDate, curStatus }
+
+function onAttendCellClick(el) {
+  if (!_attendStatData) return;
+  var mid = el.getAttribute('data-mid');
+  var aid = el.getAttribute('data-aid');
+
+  var row = _attendStatData.rows.filter(function(r){ return r.memberId === mid; })[0];
+  var actIdx = _attendStatData.activities.map(function(a){ return a.id; }).indexOf(aid);
+  if (!row || actIdx < 0) return;
+
+  var act = _attendStatData.activities[actIdx];
+  var curStatus = row.actStats[actIdx];
+
+  _attendEditCtx = {
+    mid: mid, aid: aid,
+    memberName: row.memberName,
+    actName: act.name,
+    actDate: act.startDate || '',
+    curStatus: curStatus
+  };
+
+  document.getElementById('attend-edit-member').textContent = row.memberName;
+  document.getElementById('attend-edit-activity').textContent = act.name + (act.startDate ? '（' + act.startDate + '）' : '');
+
+  var optsEl = document.getElementById('attend-edit-options');
+  optsEl.innerHTML = ATTEND_STATUS_OPTIONS.map(function(opt) {
+    var isCur = opt.value === curStatus;
+    return '<button type="button" class="btn" onclick="saveAttendEdit(\'' + opt.value + '\')" ' +
+      'style="' + opt.style + ';font-size:18px;font-weight:700;padding:10px;border-radius:6px;border:' +
+      (isCur ? '3px solid var(--forest)' : '1px solid transparent') + '">' +
+      opt.label + (isCur ? '（目前狀態）' : '') +
+    '</button>';
+  }).join('');
+
+  openModal('modal-attend-edit');
+}
+
+// 點選狀態按鈕後：先跳出二次確認對話框，列出完整修改內容，確認後才真正送出更新
+function saveAttendEdit(newStatus) {
+  if (!_attendEditCtx) return;
+  var ctx = _attendEditCtx;
+  if (newStatus === ctx.curStatus) { closeModal('modal-attend-edit'); return; }
+
+  closeModal('modal-attend-edit');
+
+  var statLabel = {};
+  ATTEND_STATUS_OPTIONS.forEach(function(o){ statLabel[o.value] = o.label; });
+
+  var msg =
+    '成員：<b>' + esc(ctx.memberName) + '</b><br>' +
+    '活動：<b>' + esc(ctx.actName) + (ctx.actDate ? '（' + esc(ctx.actDate) + '）' : '') + '</b><br><br>' +
+    '出缺席狀態將由「<b>' + esc(statLabel[ctx.curStatus] || ctx.curStatus) + '</b>」' +
+    '修改為「<b>' + esc(statLabel[newStatus] || newStatus) + '</b>」<br><br>' +
+    '確定要修改嗎？';
+
+  showCustomConfirm(msg, function() {
+    gas('updateAttendanceStatus', ctx.aid, ctx.mid, newStatus).then(function() {
+      toast('已更新出缺席狀態', 'success');
+      loadAttendStat(); // 重新整理統計表
+    }).catch(function(err) {
+      toast('更新失敗：' + (err && err.message ? err.message : err), 'error');
+    });
+  });
 }
 
 function exportAttendStat() {

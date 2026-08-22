@@ -52,7 +52,7 @@ function genId(prefix) {
 //  系統環境設定
 // ================================================================
 // ★ 將這裡換成您試算表的真實 ID
-var DATABASE_SHEET_ID = 'XXX'; 
+var DATABASE_SHEET_ID = ''; 
 
 // 建立一個取代 getActiveSpreadsheet() 的連線函式
 function getDb() {
