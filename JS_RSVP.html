@@ -7,7 +7,41 @@ function renderActivityListRsvp() {
     return;
   }
 
-  el.innerHTML = S.activities.map(function(a) {
+  // 排除「活動日期已過」，並依序排序：
+  // 1) 狀態為「開放報名」優先於「暫停報名」
+  // 2) 活動開始時間較早者優先（無開始時間排最後）
+  // 3) 以上皆同則維持資料原始順序
+  var todayStr = (function(){
+    var d = new Date();
+    return d.getFullYear() + '/' + ('0'+(d.getMonth()+1)).slice(-2) + '/' + ('0'+d.getDate()).slice(-2);
+  })();
+
+  var list = S.activities
+    .map(function(a, idx){ return { a: a, idx: idx }; })
+    .filter(function(w){
+      var d = w.a.startDate;
+      if (!d) return true;           // 沒有活動日期資訊，不排除
+      return d >= todayStr;          // 活動日期已過（早於今天）就排除
+    })
+    .sort(function(x, y) {
+      var xOpen = x.a.statusLabel === '開放報名' ? 0 : 1;
+      var yOpen = y.a.statusLabel === '開放報名' ? 0 : 1;
+      if (xOpen !== yOpen) return xOpen - yOpen;
+
+      var xd = x.a.startDate || '9999/99/99';
+      var yd = y.a.startDate || '9999/99/99';
+      if (xd !== yd) return xd < yd ? -1 : 1;
+
+      return x.idx - y.idx;
+    })
+    .map(function(w){ return w.a; });
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty">目前沒有可報名的活動</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(function(a) {
     var canClick = a.isOpen;
     // 右側說明文字邏輯
     var rightNote = '';
