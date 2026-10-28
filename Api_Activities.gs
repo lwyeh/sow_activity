@@ -308,12 +308,16 @@ function updateAttendanceStatus(activityId, memberId, newStatus) {
     sh.getRange(existIdx + 1, 11).setValue(now);           // col K：updatedAt
   } else {
     // 沒有紀錄：新增一筆，rsvpTime 與 updatedAt 皆為現在
+    // ★ memberName 欄位要存「系統 name」，跟 submitRsvp() 的寫法一致——
+    //   「以團別顯示」是用這個欄位去跟團員名冊的 name 做字串比對，
+    //   存成自然名會比對不上，導致該筆紀錄在「以團別顯示」被誤判為未報名
+    //  （「以家庭顯示」不受影響，因為它只是把這個字串直接顯示，不需要比對）
     var row = [
       genId('R'),
       activityId,
       activity.name,
       memberId,
-      member.naturalName || member.name,
+      member.name,
       member.familyId,
       member.familyName,
       newStatus,
