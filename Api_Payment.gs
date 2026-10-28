@@ -136,16 +136,67 @@ function getPayEquips(actId) {
       name:     r[2] || '',
       price:    Number(r[3]) || 0,
       maxQty:   Number(r[4]) || 0,
-      category: r[5] || '使用者'   // '使用者' | '管理者'
+      category: r[5] || '使用者',  // '使用者' | '管理者'
+      imageUrl: r[6] || ''         // ★ 新增：設備圖片網址
     };
   });
+}
+
+// ★ 上傳設備圖片到 Drive，回傳可公開檢視的縮圖網址
+// 注意：這裡改用「進階 Drive 服務」(Drive API v3, 透過全域物件 Drive 呼叫)，
+// 而不是 DriveApp。原因是 DriveApp.createFolder() / 在根目錄 createFile()
+// 這兩個方法不管 manifest 宣告的 oauthScopes 是什麼，Google 內部一律要求
+// 完整的 https://www.googleapis.com/auth/drive 權限，drive.file 對它們無效。
+// 進階 Drive 服務則會確實依照 manifest 宣告的 scope 走，可以在 drive.file
+// （只能存取這支程式自己建立的檔案）的範圍內正常運作。
+//
+// ★ 使用前置作業（一次性）：Apps Script 編輯器左側「服務」旁點 + →
+//    加入「Google Drive API」進階服務 → 存檔。
+function uploadEquipImage(base64Data, mimeType, fileName) {
+  var folderId = getEquipImageFolder_();
+
+  var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType || 'image/jpeg', fileName || 'equip.jpg');
+
+  var file = Drive.Files.create(
+    { name: fileName || 'equip.jpg', parents: [folderId] },
+    blob
+  );
+
+  // 設成「知道連結的人皆可檢視」，使用者端才看得到縮圖
+  Drive.Permissions.create({ role: 'reader', type: 'anyone' }, file.id);
+
+  var url = 'https://drive.google.com/thumbnail?id=' + file.id + '&sz=w400';
+  return { success: true, url: url };
+}
+
+// 取得設備圖片存放資料夾 ID：第一次執行時由程式自己建立一個新資料夾，並把
+// 資料夾 ID 記錄在「腳本屬性」(Script Properties) 裡；之後每次都直接用這個
+// 記錄下來的 ID。因為資料夾是這支程式自己建立的，屬於 drive.file 權限範圍
+// 內可存取的檔案，藉此把 OAuth 授權縮小到「只能存取這支程式自己建立的檔案」。
+function getEquipImageFolder_() {
+  var props    = PropertiesService.getScriptProperties();
+  var folderId = props.getProperty('PAY_EQUIP_IMAGE_FOLDER_ID');
+
+  if (folderId) {
+    try {
+      Drive.Files.get(folderId); // 確認資料夾仍存在、可存取
+      return folderId;
+    } catch (e) {
+      // 記錄的資料夾已被刪除或無法存取：清掉紀錄，底下會自動建立一個新的
+      props.deleteProperty('PAY_EQUIP_IMAGE_FOLDER_ID');
+    }
+  }
+
+  var folder = Drive.Files.create({ name: '收費設備圖片', mimeType: 'application/vnd.google-apps.folder' });
+  props.setProperty('PAY_EQUIP_IMAGE_FOLDER_ID', folder.id);
+  return folder.id;
 }
 
 // 新增一筆設備
 function addPayEquip(data) {
   var sh  = getSheet(SHEET_PAY_EQUIPS);
   var id  = genId('PE');
-  sh.appendRow([id, String(data.actId), data.name || '', Number(data.price) || 0, Number(data.maxQty) || 0, data.category || '使用者']);
+  sh.appendRow([id, String(data.actId), data.name || '', Number(data.price) || 0, Number(data.maxQty) || 0, data.category || '使用者', data.imageUrl || '']);
   return { success: true, id: id };
 }
 
