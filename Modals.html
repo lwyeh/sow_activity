@@ -366,6 +366,12 @@
             </select>
           </div>
         </div>
+        <div class="form-row" style="margin-top:8px">
+          <div class="form-group" style="margin-bottom:0">
+            <label>設備圖片（選填）</label>
+            <input id="t1-equip-image" type="file" accept="image/*">
+          </div>
+        </div>
         <div class="flex-end" style="margin-top:8px">
           <button class="btn btn-green btn-sm" id="t1-equip-add-btn" onclick="addEquip()">新增設備</button>
         </div>
@@ -656,6 +662,13 @@
     </div>
     <div style="font-size:16px;color:var(--ink-soft);margin-bottom:16px" id="attend-edit-activity"></div>
     <div style="display:flex;flex-direction:column;gap:8px" id="attend-edit-options"></div>
+  </div>
+</div>
+
+<!-- 設備圖片放大檢視 -->
+<div id="modal-image-lightbox" class="overlay" onclick="closeModal('modal-image-lightbox')">
+  <div class="modal" style="max-width:90vw;width:auto;background:transparent;box-shadow:none;text-align:center">
+    <img id="image-lightbox-img" src="" style="max-width:90vw;max-height:85vh;border-radius:8px;background:#fff">
   </div>
 </div>
 
